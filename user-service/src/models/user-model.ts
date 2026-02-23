@@ -28,7 +28,7 @@ const userSchema = new Schema(
 
         skillLevel: { type: String, enum: SkillLevels, default: 'beginner' },
     },
-    { timestamps: true },
+    { timestamps: true }, // Add createdAt and updatedAt fields automatically
 );
 
 // Exclude passwordHash from JSON output
