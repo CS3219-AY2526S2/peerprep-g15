@@ -1,16 +1,20 @@
 # User Service – PeerPrep
 
-The User Service is responsible for handling user identity and authentication within PeerPrep.
+The **User Service** is responsible for handling user identity and authentication within PeerPrep.
 
-Currently implemented features:
+---
+
+## ✅ Currently Implemented Features
 
 - Health check endpoint
 - User registration
 - User login (via username or email)
-- Password hashing with bcrypt
+- Password hashing using bcrypt
 - JWT access token generation
+- JWT verification middleware
+- Protected `/api/home` endpoint
 - MongoDB Atlas integration
-- Centralized error handling
+- Centralized error handling middleware
 
 ---
 
@@ -34,7 +38,7 @@ Install Node.js (v24 recommended).
 
 Verify installation:
 
-```
+```bash
 node -v
 npm -v
 ```
@@ -45,7 +49,7 @@ npm -v
 
 Navigate to the user-service folder:
 
-```
+```bash
 cd .\user-service
 npm install
 ```
@@ -54,15 +58,15 @@ npm install
 
 ## 3. Configure Environment Variables
 
-Create a file:
+Create:
 
 ```
-services/user-service/.env
+/user-service/.env
 ```
 
-Add the following (replace placeholders):
+Add:
 
-```
+```env
 PORT=3001
 NODE_ENV=development
 
@@ -76,16 +80,14 @@ BCRYPT_SALT_ROUNDS=10
 
 ### Notes
 
-- `MONGO_URI` should be the Atlas SRV string (mongodb+srv://...)
+- `MONGO_URI` must be the Atlas SRV string (`mongodb+srv://...`)
 - Never commit `.env`
 
 ---
 
 ## 4. Run the Service
 
-Start in development mode:
-
-```
+```bash
 npm run dev
 ```
 
@@ -110,7 +112,7 @@ User service listening on http://localhost:3001
 
 Response:
 
-```
+```json
 { "status": "ok" }
 ```
 
@@ -126,18 +128,18 @@ Response:
 
 Body:
 
-```
+```json
 {
-  "username": "testuser",
-  "email": "test@example.com",
-  "password": "Password123!"
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "Password123!"
 }
 ```
 
 Returns:
 
-- Created user (without passwordHash)
-- JWT token
+- Created user (without `passwordHash`)
+- JWT access token
 
 ---
 
@@ -151,45 +153,91 @@ Returns:
 
 Body:
 
-```
+```json
 {
-  "identifier": "testuser",
-  "password": "Password123!"
+    "identifier": "testuser",
+    "password": "Password123!"
 }
 ```
 
 or
 
-```
+```json
 {
-  "identifier": "test@example.com",
-  "password": "Password123!"
+    "identifier": "test@example.com",
+    "password": "Password123!"
 }
 ```
 
 Returns:
 
 - User object
-- JWT token
+- JWT access token
+
+---
+
+## Protected Home Endpoint
+
+**GET**
+
+```
+/api/home
+```
+
+Headers:
+
+```
+Authorization: Bearer <JWT_TOKEN>
+```
+
+Returns:
+
+- The currently authenticated user
+
+If no token or invalid token → `401 Unauthorized`.
 
 ---
 
 # Simple Testing (PowerShell)
 
-### Register
+## Register
 
-```
+```powershell
 Invoke-RestMethod -Method POST `
   -Uri "http://localhost:3001/api/auth/register" `
   -ContentType "application/json" `
   -Body '{"username":"testuser","email":"test@example.com","password":"Password123!"}'
 ```
 
-### Login
+## Login
 
-```
-Invoke-RestMethod -Method POST `
+```powershell
+$login = Invoke-RestMethod -Method POST `
   -Uri "http://localhost:3001/api/auth/login" `
   -ContentType "application/json" `
   -Body '{"identifier":"testuser","password":"Password123!"}'
+
+$token = $login.token
 ```
+
+## Access Protected Route
+
+```powershell
+Invoke-RestMethod -Method GET `
+  -Uri "http://localhost:3001/api/home" `
+  -Headers @{ Authorization = "Bearer $token" }
+```
+
+---
+
+# Architecture Overview
+
+Request Flow for Protected Routes:
+
+1. Client sends JWT in `Authorization` header
+2. `requireAuth` middleware verifies token
+3. Middleware attaches `{ userId, role }` to request
+4. Controller retrieves authenticated user from DB
+5. User data returned (without passwordHash)
+
+---
