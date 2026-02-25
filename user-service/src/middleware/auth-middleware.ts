@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt, { type JwtPayload, type Secret } from 'jsonwebtoken';
 import type { Role } from '../models/user-model';
+import { AppError } from '../utils/app-error';
 
 export interface AuthenticatedRequest extends Request {
     auth: {
@@ -9,20 +10,18 @@ export interface AuthenticatedRequest extends Request {
     };
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export function requireAuth(req: Request, _res: Response, next: NextFunction) {
     try {
         const header = req.headers.authorization ?? '';
         const [scheme, token] = header.split(' ');
 
         if (scheme !== 'Bearer' || !token) {
-            return res
-                .status(401)
-                .json({ error: { message: 'Missing or invalid Authorization header' } });
+            return next(AppError.unauthorized('Missing or invalid Authorization header'));
         }
 
         const secret = process.env.JWT_SECRET as Secret;
         if (!secret) {
-            return res.status(500).json({ error: { message: 'JWT_SECRET is missing' } });
+            return next(new Error('JWT_SECRET is missing'));
         }
 
         const decoded = jwt.verify(token, secret) as JwtPayload;
@@ -31,13 +30,27 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
         const role = (decoded as any).role as Role;
 
         if (!userId) {
-            return res.status(401).json({ error: { message: 'Invalid token payload' } });
+            return next(AppError.unauthorized('Invalid token payload'));
         }
 
         (req as any).auth = { userId, role };
-
         return next();
     } catch {
-        return res.status(401).json({ error: { message: 'Invalid or expired token' } });
+        return next(AppError.unauthorized('Invalid or expired token'));
     }
+}
+
+// Authorisation check after authentication; use like requireAuth -> requireRole('admin') for admin-only routes
+export function requireRole(...allowedRoles: Role[]) {
+    return (req: Request, _res: Response, next: NextFunction) => {
+        const auth = (req as any).auth as { userId: string; role: Role } | undefined;
+
+        if (!auth) return next(AppError.unauthorized('Missing or invalid token'));
+
+        if (!allowedRoles.includes(auth.role)) {
+            return next(AppError.forbidden('Insufficient permissions'));
+        }
+
+        return next();
+    };
 }
