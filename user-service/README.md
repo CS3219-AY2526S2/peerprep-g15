@@ -9,10 +9,12 @@ The **User Service** is responsible for handling user identity, authentication, 
 - Health check endpoint
 - User registration
 - User login (via username or email)
-- Stateless logout endpoint
+- Access + Refresh token authentication
+- HttpOnly refresh token cookies
+- Refresh token rotation
+- Stateful logout with token revocation
 - Password hashing using bcrypt
-- JWT access token generation
-- JWT verification middleware
+- JWT access token verification middleware
 - Role-based access control (RBAC)
 - Protected user landing page (`/home`)
 - Protected admin landing page (`/admin/home`)
@@ -33,6 +35,7 @@ The **User Service** is responsible for handling user identity, authentication, 
 - bcrypt
 - jsonwebtoken (JWT)
 - Zod
+- cookie-parser
 
 ---
 
@@ -80,7 +83,11 @@ MONGO_URI=<your MongoDB Atlas SRV connection string>
 MONGO_DB_NAME=peerprep_dev_<yourname>
 
 JWT_SECRET=<long random string>
-JWT_EXPIRES_IN=1h
+JWT_EXPIRES_IN=15m
+
+JWT_REFRESH_SECRET=<different long random string>
+JWT_REFRESH_EXPIRES_IN=7d
+
 BCRYPT_SALT_ROUNDS=10
 ```
 
@@ -88,7 +95,15 @@ BCRYPT_SALT_ROUNDS=10
 
 - `MONGO_URI` must be the Atlas SRV string (`mongodb+srv://...`)
 - Never commit `.env`
-- JWT contains `{ sub: userId, role }` in payload
+- Access JWT payload contains:
+    - `sub` → userId
+    - `role` → user/admin
+    - `type` → `"access"`
+
+- Refresh JWT payload contains:
+    - `sub`
+    - `role`
+    - `type` → `"refresh"`
 
 ---
 
@@ -104,15 +119,15 @@ BCRYPT_SALT_ROUNDS=10
 /health
 ```
 
-### Purpose
-
-Used by deployment platforms or other services to verify that the User Service is running and responsive.
-
-### Response
+Returns:
 
 ```json
 { "status": "ok" }
 ```
+
+---
+
+# Authentication Endpoints
 
 ---
 
@@ -126,36 +141,35 @@ Used by deployment platforms or other services to verify that the User Service i
 
 ### Purpose
 
-Creates a new user account.
+Creates a new user account and immediately authenticates them.
 
-- Validates request body using Zod
-- Hashes password using bcrypt
+### Behavior
+
+- Validates body via Zod
+- Hashes password via bcrypt
 - Stores user in MongoDB
-- Returns JWT access token for immediate login
-
-### Body
-
-```json
-{
-    "username": "testuser",
-    "email": "test@example.com",
-    "password": "Password123!"
-}
-```
+- Issues:
+    - Short-lived **access token** (JSON response)
+    - Long-lived **refresh token** (HttpOnly cookie)
 
 ### Returns
 
-- Created user (without `passwordHash` and without Mongo `_id`)
-- JWT access token
+```json
+{
+  "user": { ... },
+  "accessToken": "..."
+}
+```
 
-### Possible Errors
+### Cookie Set
 
-- `400` – Invalid request body
-- `409` – Username or email already in use
+```
+refreshToken=<JWT>; HttpOnly; Path=/auth; SameSite=Lax
+```
 
 ---
 
-## Login (Username OR Email)
+## Login
 
 **POST**
 
@@ -163,45 +177,44 @@ Creates a new user account.
 /auth/login
 ```
 
-### Purpose
+Authenticates user and issues:
 
-Authenticates a user or admin and issues a JWT access token.
-
-- Accepts either username or email as identifier
-- Verifies password using bcrypt
-- Includes `role` in JWT payload
-
-### Body
-
-```json
-{
-    "identifier": "testuser",
-    "password": "Password123!"
-}
-```
-
-or
-
-```json
-{
-    "identifier": "test@example.com",
-    "password": "Password123!"
-}
-```
-
-### Returns
-
-- User object (without passwordHash and `_id`)
-- JWT access token
-
-### Possible Errors
-
-- `400` – Invalid request body
-- `401` – Invalid credentials
+- New access token
+- New refresh token (overwrites previous session)
 
 ---
 
-## Logout
+## Refresh Access Token
+
+**POST**
+
+```
+/auth/refresh
+```
+
+### Purpose
+
+Issues a new access token using the HttpOnly refresh token cookie.
+
+### Behavior
+
+1. Verifies refresh token signature and expiry
+2. Confirms refresh token hash matches database
+3. Issues:
+    - New access token
+    - Rotated refresh token (cookie updated)
+
+4. Stores new refresh token hash in DB
+
+### Returns
+
+```json
+{
+    "accessToken": "..."
+}
+```
+
+## Logout (Stateful)
 
 **POST**
 
@@ -211,21 +224,27 @@ or
 
 ### Purpose
 
-Logs out the currently authenticated user.
+Revokes the current session.
 
-Currently stateless. Since refresh tokens are not implemented yet, logout simply returns success and the frontend should delete the stored JWT.
+### Behavior
 
-### Headers
-
-```
-Authorization: Bearer <JWT_TOKEN>
-```
+1. Reads refresh token cookie
+2. Clears stored refresh token hash in DB
+3. Clears refresh cookie
 
 ### Returns
 
 ```json
 { "message": "Logged out" }
 ```
+
+After logout:
+
+- `/auth/refresh` will fail with `401`
+
+---
+
+# Protected Routes
 
 ---
 
@@ -237,33 +256,11 @@ Authorization: Bearer <JWT_TOKEN>
 /home
 ```
 
-### Purpose
-
-Landing page for authenticated users.
-
-This will eventually serve as the entry point for:
-
-- Queueing for question matching
-- Viewing user-specific session information
-
-### Headers
+Requires:
 
 ```
-Authorization: Bearer <JWT_TOKEN>
+Authorization: Bearer <accessToken>
 ```
-
-### Returns
-
-```json
-{
-  "message": "User home",
-  "user": { ... }
-}
-```
-
-### Possible Errors
-
-- `401` – Missing or invalid token
 
 ---
 
@@ -275,30 +272,10 @@ Authorization: Bearer <JWT_TOKEN>
 /admin/home
 ```
 
-### Purpose
+Requires:
 
-Landing page for administrators.
-
-This will eventually serve as the entry point for:
-
-- Question CRUD management
-- Administrative features
-
-### Headers
-
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-### Access Control
-
-- Requires valid JWT
-- Requires role = `admin`
-
-### Possible Errors
-
-- `401` – Missing or invalid token
-- `403` – Insufficient permissions
+- Valid access token
+- Role = `admin`
 
 ---
 
@@ -310,31 +287,7 @@ Authorization: Bearer <JWT_TOKEN>
 /me
 ```
 
-### Purpose
-
-Returns the currently authenticated user’s profile information.
-
-Mongo `_id` is hidden and immutable.
-
-### Headers
-
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-### Returns
-
-```json
-{
-    "user": {
-        "username": "testuser",
-        "email": "test@example.com",
-        "preferredLanguages": ["python"],
-        "skillLevel": "intermediate",
-        "role": "user"
-    }
-}
-```
+Requires access token.
 
 ---
 
@@ -346,69 +299,63 @@ Authorization: Bearer <JWT_TOKEN>
 /me
 ```
 
-### Purpose
-
-Allows users to update their profile fields:
-
-- `username`
-- `email`
-- `preferredLanguages`
-- `skillLevel`
-- Optional password change
-
-### Headers
-
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-### Example Body (Profile Update)
-
-```json
-{
-    "preferredLanguages": ["python", "typescript"],
-    "skillLevel": "advanced"
-}
-```
-
-### Example Body (Password Change)
-
-```json
-{
-    "currentPassword": "OldPassword123!",
-    "newPassword": "NewPassword123!"
-}
-```
-
-> To change password, both `currentPassword` and `newPassword` must be provided.
-
-### Possible Errors
-
-- `400` – Invalid request body
-- `401` – Incorrect current password
-- `409` – Username or email already in use
+Requires access token.
 
 ---
 
 # Architecture Overview
 
-### Authentication Flow
+---
 
-1. Client sends credentials to `/auth/login`
-2. Server verifies credentials
-3. Server signs JWT containing:
-    - `sub` → userId
-    - `role` → user/admin
+## New Authentication Flow (Access + Refresh)
 
-4. Client stores JWT
-5. Client sends JWT in `Authorization: Bearer <token>` header for protected routes
+### First Login / Register
+
+1. Client sends credentials
+2. Server verifies user
+3. Server issues:
+    - Access token (short-lived)
+    - Refresh token (HttpOnly cookie)
+
+4. Refresh token hash stored in DB
 
 ---
 
-### Protected Route Flow
+### Accessing Protected Routes
 
-1. `requireAuth` middleware verifies JWT
-2. Middleware attaches `{ userId, role }` to request
-3. `requireRole('admin')` checks authorization
-4. Controller retrieves user from database
-5. Safe user object returned (no passwordHash, no `_id`)
+1. Client sends:
+
+```
+Authorization: Bearer <accessToken>
+```
+
+2. `requireAuth` verifies:
+    - signature
+    - expiry
+    - token type = `"access"`
+
+---
+
+### Refresh Flow
+
+1. Access token expires
+2. Client calls `/auth/refresh`
+3. Browser automatically sends refresh cookie
+4. Server:
+    - verifies refresh token
+    - checks DB hash
+    - rotates refresh token
+    - returns new access token
+
+---
+
+### Logout Flow
+
+1. Client calls `/auth/logout`
+2. Server:
+    - clears refresh hash in DB
+    - clears cookie
+
+3. Refresh no longer works
+
+---

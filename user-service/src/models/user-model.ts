@@ -35,6 +35,10 @@ const userSchema = new Schema(
         preferredLanguages: { type: [String], default: [] },
 
         skillLevel: { type: String, enum: SkillLevels, default: 'beginner' },
+
+        refreshTokenHash: { type: String, default: null },
+
+        refreshTokenIssuedAt: { type: Date, default: null },
     },
     { timestamps: true }, // Add createdAt and updatedAt fields automatically
 );
@@ -42,9 +46,11 @@ const userSchema = new Schema(
 userSchema.set('toJSON', {
     transform: (_doc, ret) => {
         const obj: any = { ...ret };
+        delete obj.__v; // Hide version key
         delete obj._id; // Hide MongoDB's internal _id field
         delete obj.passwordHash; // Hide password hash
-        delete obj.__v; // Hide version key
+        delete obj.refreshTokenHash; // Hide refresh token hash
+        delete obj.refreshTokenIssuedAt; // Hide refresh token issued at timestamp
         return obj;
     },
 });

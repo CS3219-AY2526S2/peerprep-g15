@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
-import jwt, { type JwtPayload, type Secret } from 'jsonwebtoken';
 import type { Role } from '../models/user-model';
 import { AppError } from '../utils/app-error';
+import { verifyAccessToken } from '../utils/jwt';
 
 export interface AuthenticatedRequest extends Request {
     auth: {
@@ -19,21 +19,16 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
             return next(AppError.unauthorized('Missing or invalid Authorization header'));
         }
 
-        const secret = process.env.JWT_SECRET as Secret;
-        if (!secret) {
-            return next(new Error('JWT_SECRET is missing')); // Server misconfiguration, not a client error
-        }
-
-        const decoded = jwt.verify(token, secret) as JwtPayload;
+        const decoded = verifyAccessToken(token);
 
         const userId = decoded.sub;
-        const role = (decoded as any).role as Role;
+        const role = decoded.role as Role;
 
         if (!userId) {
             return next(AppError.unauthorized('Invalid token payload'));
         }
 
-        (req as any).auth = { userId, role };
+        (req as AuthenticatedRequest).auth = { userId, role };
         return next();
     } catch {
         return next(AppError.unauthorized('Invalid or expired token'));
@@ -42,7 +37,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
 
 export function requireRole(...allowedRoles: Role[]) {
     return (req: Request, _res: Response, next: NextFunction) => {
-        const auth = (req as any).auth as { userId: string; role: Role } | undefined;
+        const auth = (req as AuthenticatedRequest).auth;
 
         if (!auth) return next(AppError.unauthorized('Missing or invalid token'));
 
