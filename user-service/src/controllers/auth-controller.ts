@@ -4,8 +4,7 @@ import { AuthService } from '../services/auth-service';
 export class AuthController {
     static async register(req: Request, res: Response, next: NextFunction) {
         try {
-            const { username, email, password } = req.body ?? {};
-            const result = await AuthService.register({ username, email, password });
+            const result = await AuthService.register(req.body);
             res.status(201).json(result);
         } catch (err) {
             next(err);
@@ -14,8 +13,7 @@ export class AuthController {
 
     static async login(req: Request, res: Response, next: NextFunction) {
         try {
-            const { identifier, password } = req.body ?? {};
-            const result = await AuthService.login({ identifier, password });
+            const result = await AuthService.login(req.body);
             res.status(200).json(result);
         } catch (err) {
             next(err);

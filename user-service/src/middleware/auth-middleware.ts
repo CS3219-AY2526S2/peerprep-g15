@@ -21,7 +21,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
 
         const secret = process.env.JWT_SECRET as Secret;
         if (!secret) {
-            return next(new Error('JWT_SECRET is missing'));
+            return next(new Error('JWT_SECRET is missing')); // Server misconfiguration, not a client error
         }
 
         const decoded = jwt.verify(token, secret) as JwtPayload;
@@ -40,7 +40,6 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
     }
 }
 
-// Authorisation check after authentication; use like requireAuth -> requireRole('admin') for admin-only routes
 export function requireRole(...allowedRoles: Role[]) {
     return (req: Request, _res: Response, next: NextFunction) => {
         const auth = (req as any).auth as { userId: string; role: Role } | undefined;

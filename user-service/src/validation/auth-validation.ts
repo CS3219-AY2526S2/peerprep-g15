@@ -1,12 +1,19 @@
 import { z } from 'zod';
+import { EMAIL_REGEX, USERNAME_REGEX } from '../utils/regex';
 
 export const registerSchema = z.object({
-    username: z.string().trim().min(3).max(30),
+    username: z
+        .string()
+        .trim()
+        .min(3)
+        .max(30)
+        .regex(USERNAME_REGEX, 'Username cannot contain spaces'),
+    displayName: z.string().trim().max(50).optional(),
     email: z
         .string()
         .trim()
-        .email()
-        .transform((v) => v.toLowerCase()),
+        .transform((v) => v.toLowerCase())
+        .refine((v) => EMAIL_REGEX.test(v), 'Invalid email address'),
     password: z.string().min(8).max(72),
 });
 

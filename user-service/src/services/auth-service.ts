@@ -1,12 +1,15 @@
 import bcrypt from 'bcrypt';
-import { UserModel } from '../models/user-model';
+import { UserModel, type SkillLevel } from '../models/user-model';
 import { signAccessToken } from '../utils/jwt';
 import { AppError } from '../utils/app-error';
 
 type RegisterInput = {
     username: string;
+    displayName?: string;
     email: string;
     password: string;
+    preferredLanguages?: string[];
+    skillLevel?: SkillLevel;
 };
 
 type LoginInput = {
@@ -16,8 +19,9 @@ type LoginInput = {
 
 export class AuthService {
     static async register(input: RegisterInput) {
-        const username = input.username.trim();
+        const username = input.username.trim().toLowerCase();
         const email = input.email.trim().toLowerCase();
+        const displayName = input.displayName?.trim() || username;
         const password = input.password;
 
         const existingUsername = await UserModel.findOne({ username }).lean();
@@ -31,11 +35,12 @@ export class AuthService {
 
         const userDoc = await UserModel.create({
             username,
+            displayName,
             email,
             passwordHash,
             role: 'user',
-            preferredLanguages: [],
-            skillLevel: 'beginner',
+            preferredLanguages: input.preferredLanguages ?? [],
+            skillLevel: input.skillLevel ?? 'beginner',
         });
 
         const token = signAccessToken({ sub: userDoc._id.toString(), role: userDoc.role });
@@ -49,7 +54,7 @@ export class AuthService {
         const isEmail = identifierRaw.includes('@');
         const query = isEmail
             ? { email: identifierRaw.toLowerCase() }
-            : { username: identifierRaw };
+            : { username: identifierRaw.toLowerCase() };
 
         const userDoc = await UserModel.findOne(query);
         if (!userDoc) throw AppError.unauthorized('Invalid credentials');

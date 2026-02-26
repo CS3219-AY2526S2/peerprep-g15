@@ -1,12 +1,13 @@
 import bcrypt from 'bcrypt';
-import { UserModel } from '../models/user-model';
+import { UserModel, type SkillLevel } from '../models/user-model';
 import { AppError } from '../utils/app-error';
 
 type UpdateMeInput = {
     username?: string;
+    displayName?: string;
     email?: string;
     preferredLanguages?: string[];
-    skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+    skillLevel?: SkillLevel;
     currentPassword?: string;
     newPassword?: string;
 };
@@ -22,18 +23,30 @@ export class MeService {
         const user = await UserModel.findById(userId);
         if (!user) throw AppError.notFound('User not found');
 
-        if (patch.username && patch.username !== user.username) {
+        if (patch.username && patch.username.trim().toLowerCase() !== user.username) {
+            const username = patch.username.trim().toLowerCase();
+
             const exists = await UserModel.findOne({
-                username: patch.username,
+                username,
                 _id: { $ne: userId },
             }).lean();
+
             if (exists) throw AppError.conflict('Username already in use');
-            user.username = patch.username.trim();
+            user.username = username;
         }
 
-        if (patch.email && patch.email !== user.email) {
+        if (patch.displayName) {
+            user.displayName = patch.displayName.trim();
+        }
+
+        if (patch.email && patch.email.trim().toLowerCase() !== user.email) {
             const email = patch.email.trim().toLowerCase();
-            const exists = await UserModel.findOne({ email, _id: { $ne: userId } }).lean();
+
+            const exists = await UserModel.findOne({
+                email,
+                _id: { $ne: userId },
+            }).lean();
+
             if (exists) throw AppError.conflict('Email already in use');
             user.email = email;
         }
