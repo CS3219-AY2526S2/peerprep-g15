@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { AdminController } from '../controllers/admin-controller';
 import { requireAuth, requireRole } from '../middleware/auth-middleware';
+import { AdminController } from '../controllers/admin-controller';
 
 export const adminRouter = Router();
 
-// Admin “home” page for now
 adminRouter.get('/home', requireAuth, requireRole('admin'), AdminController.home);

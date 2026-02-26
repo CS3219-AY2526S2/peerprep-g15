@@ -31,11 +31,12 @@ const userSchema = new Schema(
     { timestamps: true }, // Add createdAt and updatedAt fields automatically
 );
 
-// Exclude passwordHash from JSON output
 userSchema.set('toJSON', {
     transform: (_doc, ret) => {
         const obj: any = { ...ret };
-        delete obj.passwordHash;
+        delete obj._id; // Hide MongoDB's internal _id field
+        delete obj.passwordHash; // Hide password hash
+        delete obj.__v; // Hide version key
         return obj;
     },
 });

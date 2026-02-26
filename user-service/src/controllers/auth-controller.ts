@@ -21,4 +21,12 @@ export class AuthController {
             next(err);
         }
     }
+
+    static async logout(_req: Request, res: Response, next: NextFunction) {
+        try {
+            res.status(200).json({ message: 'Logged out' });
+        } catch (err) {
+            next(err);
+        }
+    }
 }

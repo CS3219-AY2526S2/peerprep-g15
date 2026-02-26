@@ -1,32 +1,38 @@
 # User Service – PeerPrep
 
-The **User Service** is responsible for handling user identity and authentication within PeerPrep.
+The **User Service** is responsible for handling user identity, authentication, authorization (RBAC), and profile management within PeerPrep.
 
 ---
 
-## ✅ Currently Implemented Features
+## Currently Implemented Features
 
 - Health check endpoint
 - User registration
 - User login (via username or email)
+- Stateless logout endpoint
 - Password hashing using bcrypt
 - JWT access token generation
 - JWT verification middleware
-- Protected `/api/home` endpoint
+- Role-based access control (RBAC)
+- Protected user landing page (`/home`)
+- Protected admin landing page (`/admin/home`)
+- Profile viewing and editing (`/me`)
 - MongoDB Atlas integration
 - Centralized error handling middleware
+- Zod-based request validation
 
 ---
 
 # Tech Stack
 
-- **Node.js**
-- **TypeScript**
-- **Express**
-- **MongoDB Atlas**
-- **Mongoose**
-- **bcrypt**
-- **jsonwebtoken (JWT)**
+- Node.js
+- TypeScript
+- Express
+- MongoDB Atlas
+- Mongoose
+- bcrypt
+- jsonwebtoken (JWT)
+- Zod
 
 ---
 
@@ -82,25 +88,13 @@ BCRYPT_SALT_ROUNDS=10
 
 - `MONGO_URI` must be the Atlas SRV string (`mongodb+srv://...`)
 - Never commit `.env`
-
----
-
-## 4. Run the Service
-
-```bash
-npm run dev
-```
-
-Expected output:
-
-```
-MongoDB connected
-User service listening on http://localhost:3001
-```
+- JWT contains `{ sub: userId, role }` in payload
 
 ---
 
 # API Endpoints
+
+---
 
 ## Health Check
 
@@ -110,7 +104,11 @@ User service listening on http://localhost:3001
 /health
 ```
 
-Response:
+### Purpose
+
+Used by deployment platforms or other services to verify that the User Service is running and responsive.
+
+### Response
 
 ```json
 { "status": "ok" }
@@ -123,10 +121,19 @@ Response:
 **POST**
 
 ```
-/api/auth/register
+/auth/register
 ```
 
-Body:
+### Purpose
+
+Creates a new user account.
+
+- Validates request body using Zod
+- Hashes password using bcrypt
+- Stores user in MongoDB
+- Returns JWT access token for immediate login
+
+### Body
 
 ```json
 {
@@ -136,10 +143,15 @@ Body:
 }
 ```
 
-Returns:
+### Returns
 
-- Created user (without `passwordHash`)
+- Created user (without `passwordHash` and without Mongo `_id`)
 - JWT access token
+
+### Possible Errors
+
+- `400` – Invalid request body
+- `409` – Username or email already in use
 
 ---
 
@@ -148,10 +160,18 @@ Returns:
 **POST**
 
 ```
-/api/auth/login
+/auth/login
 ```
 
-Body:
+### Purpose
+
+Authenticates a user or admin and issues a JWT access token.
+
+- Accepts either username or email as identifier
+- Verifies password using bcrypt
+- Includes `role` in JWT payload
+
+### Body
 
 ```json
 {
@@ -169,75 +189,226 @@ or
 }
 ```
 
-Returns:
+### Returns
 
-- User object
+- User object (without passwordHash and `_id`)
 - JWT access token
+
+### Possible Errors
+
+- `400` – Invalid request body
+- `401` – Invalid credentials
 
 ---
 
-## Protected Home Endpoint
+## Logout
 
-**GET**
+**POST**
 
 ```
-/api/home
+/auth/logout
 ```
 
-Headers:
+### Purpose
+
+Logs out the currently authenticated user.
+
+Currently stateless. Since refresh tokens are not implemented yet, logout simply returns success and the frontend should delete the stored JWT.
+
+### Headers
 
 ```
 Authorization: Bearer <JWT_TOKEN>
 ```
 
-Returns:
+### Returns
 
-- The currently authenticated user
-
-If no token or invalid token → `401 Unauthorized`.
+```json
+{ "message": "Logged out" }
+```
 
 ---
 
-# Simple Testing (PowerShell)
+## User Home
 
-## Register
+**GET**
 
-```powershell
-Invoke-RestMethod -Method POST `
-  -Uri "http://localhost:3001/api/auth/register" `
-  -ContentType "application/json" `
-  -Body '{"username":"testuser","email":"test@example.com","password":"Password123!"}'
+```
+/home
 ```
 
-## Login
+### Purpose
 
-```powershell
-$login = Invoke-RestMethod -Method POST `
-  -Uri "http://localhost:3001/api/auth/login" `
-  -ContentType "application/json" `
-  -Body '{"identifier":"testuser","password":"Password123!"}'
+Landing page for authenticated users.
 
-$token = $login.token
+This will eventually serve as the entry point for:
+
+- Queueing for question matching
+- Viewing user-specific session information
+
+### Headers
+
+```
+Authorization: Bearer <JWT_TOKEN>
 ```
 
-## Access Protected Route
+### Returns
 
-```powershell
-Invoke-RestMethod -Method GET `
-  -Uri "http://localhost:3001/api/home" `
-  -Headers @{ Authorization = "Bearer $token" }
+```json
+{
+  "message": "User home",
+  "user": { ... }
+}
 ```
+
+### Possible Errors
+
+- `401` – Missing or invalid token
+
+---
+
+## Admin Home
+
+**GET**
+
+```
+/admin/home
+```
+
+### Purpose
+
+Landing page for administrators.
+
+This will eventually serve as the entry point for:
+
+- Question CRUD management
+- Administrative features
+
+### Headers
+
+```
+Authorization: Bearer <JWT_TOKEN>
+```
+
+### Access Control
+
+- Requires valid JWT
+- Requires role = `admin`
+
+### Possible Errors
+
+- `401` – Missing or invalid token
+- `403` – Insufficient permissions
+
+---
+
+## View Own Profile
+
+**GET**
+
+```
+/me
+```
+
+### Purpose
+
+Returns the currently authenticated user’s profile information.
+
+Mongo `_id` is hidden and immutable.
+
+### Headers
+
+```
+Authorization: Bearer <JWT_TOKEN>
+```
+
+### Returns
+
+```json
+{
+    "user": {
+        "username": "testuser",
+        "email": "test@example.com",
+        "preferredLanguages": ["python"],
+        "skillLevel": "intermediate",
+        "role": "user"
+    }
+}
+```
+
+---
+
+## Update Own Profile
+
+**PATCH**
+
+```
+/me
+```
+
+### Purpose
+
+Allows users to update their profile fields:
+
+- `username`
+- `email`
+- `preferredLanguages`
+- `skillLevel`
+- Optional password change
+
+### Headers
+
+```
+Authorization: Bearer <JWT_TOKEN>
+```
+
+### Example Body (Profile Update)
+
+```json
+{
+    "preferredLanguages": ["python", "typescript"],
+    "skillLevel": "advanced"
+}
+```
+
+### Example Body (Password Change)
+
+```json
+{
+    "currentPassword": "OldPassword123!",
+    "newPassword": "NewPassword123!"
+}
+```
+
+> To change password, both `currentPassword` and `newPassword` must be provided.
+
+### Possible Errors
+
+- `400` – Invalid request body
+- `401` – Incorrect current password
+- `409` – Username or email already in use
 
 ---
 
 # Architecture Overview
 
-Request Flow for Protected Routes:
+### Authentication Flow
 
-1. Client sends JWT in `Authorization` header
-2. `requireAuth` middleware verifies token
-3. Middleware attaches `{ userId, role }` to request
-4. Controller retrieves authenticated user from DB
-5. User data returned (without passwordHash)
+1. Client sends credentials to `/auth/login`
+2. Server verifies credentials
+3. Server signs JWT containing:
+    - `sub` → userId
+    - `role` → user/admin
+
+4. Client stores JWT
+5. Client sends JWT in `Authorization: Bearer <token>` header for protected routes
 
 ---
+
+### Protected Route Flow
+
+1. `requireAuth` middleware verifies JWT
+2. Middleware attaches `{ userId, role }` to request
+3. `requireRole('admin')` checks authorization
+4. Controller retrieves user from database
+5. Safe user object returned (no passwordHash, no `_id`)
