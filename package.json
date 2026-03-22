@@ -20,6 +20,14 @@
     },
     "homepage": "https://github.com/CS3219-AY2526S2/peerprep-g15#readme",
     "devDependencies": {
+        "@types/axios": "^0.9.36",
         "prettier": "^3.8.1"
+    },
+    "dependencies": {
+        "@types/react-router-dom": "^5.3.3",
+        "axios": "^1.13.6",
+        "bootstrap": "^5.3.8",
+        "cors": "^2.8.6",
+        "react-router-dom": "^7.13.1"
     }
 }
