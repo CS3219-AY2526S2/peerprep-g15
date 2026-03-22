@@ -1,7 +1,7 @@
 const SubmitButton = () => {
     return (
         <div>
-            <button className="btn btn-secondary">Sign In</button>
+            <button className="btn btn-secondary">Enter Workspace</button>
         </div>
     );
 };

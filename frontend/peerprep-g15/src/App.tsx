@@ -2,7 +2,9 @@ import { useState } from 'react';
 import type { ChangeEvent } from 'react';
 import './App.css';
 import logo from './assets/logo.svg';
+import arrows from './assets/arrows.svg';
 import SubmitButton from './components/SubmitButton.tsx';
+import SignUpButton from './components/SignUpButton.tsx';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -55,6 +57,25 @@ function App() {
 
     return (
         <>
+            <div>
+                <nav className="navbar navbar-light " style={{ backgroundColor: '#dedede' }}>
+                    <div className="container">
+                        <a className="navbar-brand" href="#">
+                            <img
+                                src={arrows}
+                                width="30"
+                                height="30"
+                                className="d-inline-block align-top"
+                                alt=""
+                            />
+                            PeerPrep
+                        </a>
+                    </div>
+                    <div className="button-container" style={{ marginRight: '15px' }}>
+                        <SignUpButton />
+                    </div>
+                </nav>
+            </div>
             <section id="center">
                 <div className="logo">
                     <img src={logo} />
@@ -86,7 +107,7 @@ function App() {
                     <div
                         style={{
                             position: 'absolute',
-                            bottom: '150px',
+                            bottom: '100px',
                             left: '50%',
                             transform: 'translateX(-50%)',
                             width: '100%',
