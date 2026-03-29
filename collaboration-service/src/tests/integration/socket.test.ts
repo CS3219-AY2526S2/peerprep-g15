@@ -3,7 +3,14 @@ const { io: Client } = require('socket.io-client');
 import type { Socket } from 'socket.io-client';
 import { createApp } from '../../app';
 import { initSocket } from '../../socket';
-import { getSession, voteLanguage, updateCode, endSession, handleDisconnect, executeCode } from '../../services/collaboration-service';
+import {
+    getSession,
+    voteLanguage,
+    updateCode,
+    endSession,
+    handleDisconnect,
+    executeCode,
+} from '../../services/collaboration-service';
 
 jest.mock('../../services/collaboration-service');
 
@@ -83,7 +90,9 @@ describe('join-room', () => {
 
 describe('lock-in', () => {
     it('should emit session-started when both users agree on language', (done) => {
-        mockedVoteLanguage.mockResolvedValue(mockSession({ status: 'active', language: 'python' }) as any);
+        mockedVoteLanguage.mockResolvedValue(
+            mockSession({ status: 'active', language: 'python' }) as any,
+        );
 
         clientA.emit('join-room', 'room1', 'user1');
         clientA.emit('lock-in', 'room1', 'user1', 'python');
@@ -163,7 +172,9 @@ describe('code-change', () => {
 
 describe('run-code', () => {
     it('should emit code-result after execution', (done) => {
-        mockedGetSession.mockResolvedValue(mockSession({ status: 'active', userIds: ['user1', 'user2'] }) as any);
+        mockedGetSession.mockResolvedValue(
+            mockSession({ status: 'active', userIds: ['user1', 'user2'] }) as any,
+        );
         mockedExecuteCode.mockResolvedValue({
             stdout: 'hello',
             stderr: '',
@@ -186,7 +197,9 @@ describe('run-code', () => {
     }, 10000);
 
     it('should emit code-error if execution fails', (done) => {
-        mockedGetSession.mockResolvedValue(mockSession({ status: 'active', userIds: ['user1', 'user2'] }) as any);
+        mockedGetSession.mockResolvedValue(
+            mockSession({ status: 'active', userIds: ['user1', 'user2'] }) as any,
+        );
         mockedExecuteCode.mockRejectedValue(new Error('Execution failed'));
 
         clientA.emit('join-room', 'room1', 'user1');

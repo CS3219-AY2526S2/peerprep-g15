@@ -25,11 +25,7 @@ export async function getSession(roomId: string) {
 
 // update the code in the session
 export async function updateCode(roomId: string, code: string) {
-    return await Session.findOneAndUpdate(
-        { roomId },
-        { code },
-        { new: true }
-    );
+    return await Session.findOneAndUpdate({ roomId }, { code }, { new: true });
 }
 
 export async function voteLanguage(roomId: string, userId: string, language: string) {
@@ -42,7 +38,7 @@ export async function voteLanguage(roomId: string, userId: string, language: str
     const session = await Session.findOneAndUpdate(
         { roomId },
         { $set: { [`languageVotes.${userId}`]: language } },
-        { new: true }
+        { new: true },
     );
 
     const votes = session?.languageVotes;
@@ -53,7 +49,7 @@ export async function voteLanguage(roomId: string, userId: string, language: str
             return await Session.findOneAndUpdate(
                 { roomId },
                 { status: 'active', language: languages[0] },
-                { new: true }
+                { new: true },
             );
         } else {
             // different languages, end session
@@ -67,7 +63,7 @@ export async function voteLanguage(roomId: string, userId: string, language: str
 
 export async function executeCode(roomId: string, code: string, language: string) {
     const session = await getSession(roomId);
-    
+
     if (!session) throw new Error('Session not found');
     if (session.status !== 'active') throw new Error('Session is not active');
 
@@ -81,8 +77,8 @@ export async function executeCode(roomId: string, code: string, language: string
             language_id: languageId,
         },
         {
-            headers: { 'Content-Type': 'application/json' }
-        }
+            headers: { 'Content-Type': 'application/json' },
+        },
     );
 
     return {
@@ -96,11 +92,7 @@ export async function executeCode(roomId: string, code: string, language: string
 
 // end a session
 export async function endSession(roomId: string) {
-    return await Session.findOneAndUpdate(
-        { roomId },
-        { status: 'ended' },
-        { new: true }
-    );
+    return await Session.findOneAndUpdate({ roomId }, { status: 'ended' }, { new: true });
 }
 
 export async function handleDisconnect(roomId: string) {
@@ -111,4 +103,3 @@ export async function handleDisconnect(roomId: string) {
     }
     return false;
 }
-

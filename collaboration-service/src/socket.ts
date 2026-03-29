@@ -1,6 +1,13 @@
 import { Server } from 'socket.io';
 import http from 'http';
-import { getSession, voteLanguage, updateCode, endSession, handleDisconnect, executeCode } from './services/collaboration-service';
+import {
+    getSession,
+    voteLanguage,
+    updateCode,
+    endSession,
+    handleDisconnect,
+    executeCode,
+} from './services/collaboration-service';
 
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 const languageTimers = new Map<string, NodeJS.Timeout>();
@@ -8,7 +15,7 @@ const runCodeTimers = new Map<string, NodeJS.Timeout>();
 
 export function initSocket(server: http.Server) {
     const io = new Server(server, {
-        cors: { origin: '*' }
+        cors: { origin: '*' },
     });
 
     io.on('connection', (socket) => {
@@ -43,7 +50,7 @@ export function initSocket(server: http.Server) {
                 }, 30000);
                 languageTimers.set(roomId, timer);
             }
-        })
+        });
 
         // user locks in language
         socket.on('lock-in', async (roomId: string, userId: string, language: string) => {
@@ -69,7 +76,7 @@ export function initSocket(server: http.Server) {
         socket.on('code-change', async (roomId: string, code: string) => {
             const session = await getSession(roomId);
             if (!session || session.status !== 'active') return; // add this
-            
+
             await updateCode(roomId, code);
             socket.to(roomId).emit('code-update', code);
         });
@@ -89,33 +96,35 @@ export function initSocket(server: http.Server) {
             disconnectTimers.set(userId, timer);
         });
 
-        socket.on('run-code', async (roomId: string, userId: string, code: string, language: string) => {
-            const session = await getSession(roomId);
-            if (!session) return;
-            if (session.status !== 'active') return;
-            if (!session.userIds.includes(userId)) return;
+        socket.on(
+            'run-code',
+            async (roomId: string, userId: string, code: string, language: string) => {
+                const session = await getSession(roomId);
+                if (!session) return;
+                if (session.status !== 'active') return;
+                if (!session.userIds.includes(userId)) return;
 
-            // debounce per room
-            if (runCodeTimers.has(roomId)) clearTimeout(runCodeTimers.get(roomId));
-            const timer = setTimeout(async () => {
-                runCodeTimers.delete(roomId);
-                try {
-                    io.to(roomId).emit('code-executing');
-                    const result = await executeCode(roomId, code, language);
-                    io.to(roomId).emit('code-result', result);
-                } catch (err) {
-                    io.to(roomId).emit('code-error', { message: 'Execution failed' });
-                }
-            }, 500);
-            runCodeTimers.set(roomId, timer);
-        });
+                // debounce per room
+                if (runCodeTimers.has(roomId)) clearTimeout(runCodeTimers.get(roomId));
+                const timer = setTimeout(async () => {
+                    runCodeTimers.delete(roomId);
+                    try {
+                        io.to(roomId).emit('code-executing');
+                        const result = await executeCode(roomId, code, language);
+                        io.to(roomId).emit('code-result', result);
+                    } catch (err) {
+                        io.to(roomId).emit('code-error', { message: 'Execution failed' });
+                    }
+                }, 500);
+                runCodeTimers.set(roomId, timer);
+            },
+        );
 
         socket.on('leave-session', async (roomId: string, userId: string) => {
             await endSession(roomId); // call service directly
             io.to(roomId).emit('session-ended', { reason: 'left' });
             socket.leave(roomId);
         });
-        
     });
 
     return io;

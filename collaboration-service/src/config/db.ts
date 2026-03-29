@@ -9,8 +9,8 @@ export async function connectDB(uri: string, dbName: string) {
 }
 
 connectDB(process.env.MONGO_URI!, process.env.MONGO_DB_NAME!)
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+    .then(() => process.exit(0))
+    .catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });

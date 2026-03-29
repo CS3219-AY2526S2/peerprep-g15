@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { createSessionHandler, getSessionHandler, endSessionHandler } from '../controllers/collaboration-controllers';
+import {
+    createSessionHandler,
+    getSessionHandler,
+    endSessionHandler,
+} from '../controllers/collaboration-controllers';
 
 const router = Router();
 

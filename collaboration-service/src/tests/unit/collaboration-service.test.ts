@@ -1,4 +1,12 @@
-import { createSession, getSession, updateCode, voteLanguage, endSession, handleDisconnect, executeCode } from '../../services/collaboration-service';
+import {
+    createSession,
+    getSession,
+    updateCode,
+    voteLanguage,
+    endSession,
+    handleDisconnect,
+    executeCode,
+} from '../../services/collaboration-service';
 import { Session } from '../../models/collaboration-model';
 import axios from 'axios';
 
@@ -61,7 +69,9 @@ describe('getSession', () => {
 
 describe('updateCode', () => {
     it('should update the code in the session', async () => {
-        mockedSession.findOneAndUpdate = jest.fn().mockResolvedValue(mockSession({ code: 'console.log("hi")' }));
+        mockedSession.findOneAndUpdate = jest
+            .fn()
+            .mockResolvedValue(mockSession({ code: 'console.log("hi")' }));
 
         const result = await updateCode('room1', 'console.log("hi")');
         expect(result?.code).toBe('console.log("hi")');
@@ -72,7 +82,9 @@ describe('updateCode', () => {
 
 describe('endSession', () => {
     it('should set session status to ended', async () => {
-        mockedSession.findOneAndUpdate = jest.fn().mockResolvedValue(mockSession({ status: 'ended' }));
+        mockedSession.findOneAndUpdate = jest
+            .fn()
+            .mockResolvedValue(mockSession({ status: 'ended' }));
 
         const result = await endSession('room1');
         expect(result?.status).toBe('ended');
@@ -84,7 +96,9 @@ describe('endSession', () => {
 describe('handleDisconnect', () => {
     it('should end session and return true if session is active', async () => {
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession({ status: 'active' }));
-        mockedSession.findOneAndUpdate = jest.fn().mockResolvedValue(mockSession({ status: 'ended' }));
+        mockedSession.findOneAndUpdate = jest
+            .fn()
+            .mockResolvedValue(mockSession({ status: 'ended' }));
 
         const result = await handleDisconnect('room1');
         expect(result).toBe(true);
@@ -112,13 +126,17 @@ describe('voteLanguage', () => {
         const votes = new Map([['user1', 'python']]);
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession({ languageVotes: votes }));
 
-        await expect(voteLanguage('room1', 'user1', 'python')).rejects.toThrow('User has already locked in');
+        await expect(voteLanguage('room1', 'user1', 'python')).rejects.toThrow(
+            'User has already locked in',
+        );
     });
 
     it('should return session if only one user voted', async () => {
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession());
         const oneVote = new Map([['user1', 'python']]);
-        mockedSession.findOneAndUpdate = jest.fn().mockResolvedValue(mockSession({ languageVotes: oneVote }));
+        mockedSession.findOneAndUpdate = jest
+            .fn()
+            .mockResolvedValue(mockSession({ languageVotes: oneVote }));
 
         const result = await voteLanguage('room1', 'user1', 'python');
         expect(result?.status).toBe('pending');
@@ -126,8 +144,12 @@ describe('voteLanguage', () => {
 
     it('should start session if both users vote same language', async () => {
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession());
-        const twoVotesSame = new Map([['user1', 'python'], ['user2', 'python']]);
-        mockedSession.findOneAndUpdate = jest.fn()
+        const twoVotesSame = new Map([
+            ['user1', 'python'],
+            ['user2', 'python'],
+        ]);
+        mockedSession.findOneAndUpdate = jest
+            .fn()
             .mockResolvedValueOnce(mockSession({ languageVotes: twoVotesSame }))
             .mockResolvedValueOnce(mockSession({ status: 'active', language: 'python' }));
 
@@ -138,8 +160,12 @@ describe('voteLanguage', () => {
 
     it('should end session if both users vote different languages', async () => {
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession());
-        const twoVotesDiff = new Map([['user1', 'python'], ['user2', 'javascript']]);
-        mockedSession.findOneAndUpdate = jest.fn()
+        const twoVotesDiff = new Map([
+            ['user1', 'python'],
+            ['user2', 'javascript'],
+        ]);
+        mockedSession.findOneAndUpdate = jest
+            .fn()
             .mockResolvedValueOnce(mockSession({ languageVotes: twoVotesDiff }))
             .mockResolvedValueOnce(mockSession({ status: 'ended' }));
 
@@ -160,13 +186,17 @@ describe('executeCode', () => {
     it('should throw if session is not active', async () => {
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession({ status: 'pending' }));
 
-        await expect(executeCode('room1', 'code', 'python')).rejects.toThrow('Session is not active');
+        await expect(executeCode('room1', 'code', 'python')).rejects.toThrow(
+            'Session is not active',
+        );
     });
 
     it('should throw if language is unsupported', async () => {
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession({ status: 'active' }));
 
-        await expect(executeCode('room1', 'code', 'brainfuck')).rejects.toThrow('Unsupported language');
+        await expect(executeCode('room1', 'code', 'brainfuck')).rejects.toThrow(
+            'Unsupported language',
+        );
     });
 
     it('should return code execution result', async () => {
@@ -178,7 +208,7 @@ describe('executeCode', () => {
                 status: { description: 'Accepted' },
                 time: '0.01',
                 memory: 1024,
-            }
+            },
         });
 
         const result = await executeCode('room1', 'print("hello")', 'python');
@@ -195,7 +225,7 @@ describe('executeCode', () => {
                 status: { description: 'Accepted' },
                 time: '0.01',
                 memory: 1024,
-            }
+            },
         });
 
         await executeCode('room1', 'print("hello")', 'python');
@@ -206,7 +236,7 @@ describe('executeCode', () => {
                 source_code: 'print("hello")',
                 language_id: expect.any(Number),
             }),
-            expect.any(Object)
+            expect.any(Object),
         );
     });
 });

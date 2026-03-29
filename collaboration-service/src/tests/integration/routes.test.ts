@@ -41,9 +41,7 @@ describe('POST /session', () => {
     });
 
     it('should return 400 if fields are missing', async () => {
-        const res = await request(app)
-            .post('/session')
-            .send({ roomId: 'room1' }); // missing userIds and questionId
+        const res = await request(app).post('/session').send({ roomId: 'room1' }); // missing userIds and questionId
 
         expect(res.status).toBe(400);
         expect(res.body.message).toBe('Missing required fields');
