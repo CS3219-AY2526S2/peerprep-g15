@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createApp } from '../app';
-import { resetMatchingState } from '../services/matching-service';
+import { pickBestWaitingUserIndex, resetMatchingState } from '../services/matching-service';
+import type { QueueEntry } from '../models/matching-model';
 
 let server: Server;
 let baseUrl: string;
@@ -136,4 +137,64 @@ test('GET /matching/status/:userId reports queued state', async () => {
     assert.equal(statusJson.state, 'queued');
     assert.equal(statusJson.entry?.topic, 'trees');
     assert.equal(statusJson.entry?.difficulty, 'medium');
+});
+
+test('queue priority picks waiting user with closest proficiency distance', () => {
+    const waitingQueue: QueueEntry[] = [
+        {
+            userId: 'user-p1',
+            topic: 'graphs',
+            difficulty: 'hard',
+            proficiency: 2,
+            joinedAt: '2026-04-04T10:00:00.000Z',
+        },
+        {
+            userId: 'user-p2',
+            topic: 'graphs',
+            difficulty: 'hard',
+            proficiency: 8,
+            joinedAt: '2026-04-04T10:01:00.000Z',
+        },
+    ];
+
+    const joiningUser: QueueEntry = {
+        userId: 'user-new',
+        topic: 'graphs',
+        difficulty: 'hard',
+        proficiency: 7,
+        joinedAt: '2026-04-04T10:02:00.000Z',
+    };
+
+    const selectedIndex = pickBestWaitingUserIndex(waitingQueue, joiningUser);
+    assert.equal(selectedIndex, 1);
+});
+
+test('queue priority uses FIFO when proficiency distance is tied', () => {
+    const waitingQueue: QueueEntry[] = [
+        {
+            userId: 'user-f1',
+            topic: 'dp',
+            difficulty: 'medium',
+            proficiency: 4,
+            joinedAt: '2026-04-04T10:00:00.000Z',
+        },
+        {
+            userId: 'user-f2',
+            topic: 'dp',
+            difficulty: 'medium',
+            proficiency: 6,
+            joinedAt: '2026-04-04T10:01:00.000Z',
+        },
+    ];
+
+    const joiningUser: QueueEntry = {
+        userId: 'user-later',
+        topic: 'dp',
+        difficulty: 'medium',
+        proficiency: 5,
+        joinedAt: '2026-04-04T10:02:00.000Z',
+    };
+
+    const selectedIndex = pickBestWaitingUserIndex(waitingQueue, joiningUser);
+    assert.equal(selectedIndex, 0);
 });
