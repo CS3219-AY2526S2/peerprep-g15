@@ -1,5 +1,6 @@
 import { Session } from '../models/collaboration-model';
 import { LANGUAGE_MAP } from '../config/constants';
+// @ts-ignore
 import axios from 'axios';
 
 interface Judge0Response {
@@ -70,7 +71,7 @@ export async function executeCode(roomId: string, code: string, language: string
     const languageId = LANGUAGE_MAP[language];
     if (!languageId) throw new Error('Unsupported language');
 
-    const response = await axios.post<Judge0Response>(
+    const response: any = await axios.post(
         'https://ce.judge0.com/submissions?wait=true',
         {
             source_code: code,

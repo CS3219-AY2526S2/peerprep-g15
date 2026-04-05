@@ -7,10 +7,3 @@ export async function connectDB(uri: string, dbName: string) {
     await mongoose.connect(uri, { dbName });
     console.log('MongoDB connected');
 }
-
-connectDB(process.env.MONGO_URI!, process.env.MONGO_DB_NAME!)
-    .then(() => process.exit(0))
-    .catch((err) => {
-        console.error(err);
-        process.exit(1);
-    });

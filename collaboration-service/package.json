@@ -5,7 +5,9 @@
     "main": "index.js",
     "scripts": {
         "test": "jest",
-        "test:watch": "jest --watch"
+        "test:watch": "jest --watch",
+        "start": "ts-node src/server.ts",
+        "dev": "ts-node src/server.ts"
     },
     "author": "",
     "license": "ISC",
@@ -23,6 +25,7 @@
         "mongodb-memory-server": "^11.0.1",
         "socket.io-client": "^4.8.3",
         "supertest": "^7.2.2",
-        "ts-jest": "^29.4.6"
+        "ts-jest": "^29.4.6",
+        "ts-node": "^10.9.2"
     }
 }
