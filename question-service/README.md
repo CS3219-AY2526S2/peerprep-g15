@@ -6,6 +6,7 @@ Absolutely — here’s a `README.md` tailored to your current `question-service
 The Question Service is responsible for storing and serving coding questions for PeerPrep.
 
 It exposes endpoints for:
+
 - listing questions
 - retrieving a single question by ID
 - creating new questions
@@ -68,6 +69,7 @@ question-service/
 ├── package.json
 ├── tsconfig.json
 └── README.md
+```
 ````
 
 ---
@@ -129,9 +131,8 @@ Instead, for protected routes it:
 2. sends it to the User Service internal endpoint
 3. receives the resolved user object back
 4. uses:
-
-   * `user.id` as the canonical user identifier
-   * `user.role` for authorization decisions
+    - `user.id` as the canonical user identifier
+    - `user.role` for authorization decisions
 
 This avoids auth logic drift across services and ensures that role changes made in User Service are reflected immediately.
 
@@ -147,7 +148,7 @@ Content-Type: application/json
 
 ```json
 {
-  "accessToken": "<frontend_access_token>"
+    "accessToken": "<frontend_access_token>"
 }
 ```
 
@@ -155,13 +156,13 @@ Content-Type: application/json
 
 ```json
 {
-  "user": {
-    "id": "...",
-    "username": "...",
-    "displayName": "...",
-    "email": "...",
-    "role": "user"
-  }
+    "user": {
+        "id": "...",
+        "username": "...",
+        "displayName": "...",
+        "email": "...",
+        "role": "user"
+    }
 }
 ```
 
@@ -169,16 +170,14 @@ Content-Type: application/json
 
 ## Authorization Rules
 
-* **Authenticated users**
+- **Authenticated users**
+    - `GET /questions`
+    - `GET /questions/:id`
 
-  * `GET /questions`
-  * `GET /questions/:id`
-
-* **Admin only**
-
-  * `POST /questions`
-  * `PUT /questions/:id`
-  * `DELETE /questions/:id`
+- **Admin only**
+    - `POST /questions`
+    - `PUT /questions/:id`
+    - `DELETE /questions/:id`
 
 ---
 
@@ -194,8 +193,8 @@ Returns service health status.
 
 ```json
 {
-  "status": "ok",
-  "service": "question-service"
+    "status": "ok",
+    "service": "question-service"
 }
 ```
 
@@ -211,8 +210,8 @@ This route requires authentication.
 
 #### Optional query parameters
 
-* `difficulty` — filter by difficulty
-* `category` — filter by category
+- `difficulty` — filter by difficulty
+- `category` — filter by category
 
 Example:
 
@@ -247,19 +246,19 @@ Creates a new question.
 
 This route requires:
 
-* authentication
-* admin role
+- authentication
+- admin role
 
 Example body:
 
 ```json
 {
-  "questionId": 1,
-  "title": "Two Sum",
-  "description": "Given an array of integers...",
-  "categories": ["Arrays", "Hash Map"],
-  "difficulty": "Easy",
-  "sourceUrl": "https://leetcode.com/problems/two-sum/"
+    "questionId": 1,
+    "title": "Two Sum",
+    "description": "Given an array of integers...",
+    "categories": ["Arrays", "Hash Map"],
+    "difficulty": "Easy",
+    "sourceUrl": "https://leetcode.com/problems/two-sum/"
 }
 ```
 
@@ -273,15 +272,15 @@ Updates an existing question by numeric `questionId`.
 
 This route requires:
 
-* authentication
-* admin role
+- authentication
+- admin role
 
 Example body:
 
 ```json
 {
-  "title": "Two Sum Updated",
-  "difficulty": "Medium"
+    "title": "Two Sum Updated",
+    "difficulty": "Medium"
 }
 ```
 
@@ -295,8 +294,8 @@ Deletes a question by numeric `questionId`.
 
 This route requires:
 
-* authentication
-* admin role
+- authentication
+- admin role
 
 ---
 
@@ -317,10 +316,10 @@ Each question document contains:
 
 ### Notes
 
-* `questionId` is unique
-* `title` is trimmed
-* `difficulty` must be one of `Easy`, `Medium`, or `Hard`
-* Mongoose timestamps are enabled
+- `questionId` is unique
+- `title` is trimmed
+- `difficulty` must be one of `Easy`, `Medium`, or `Hard`
+- Mongoose timestamps are enabled
 
 ---
 
@@ -343,12 +342,12 @@ Content-Type: application/json
 
 ```json
 {
-  "questionId": 2,
-  "title": "Valid Parentheses",
-  "description": "Given a string containing just the characters...",
-  "categories": ["Stack", "Strings"],
-  "difficulty": "Easy",
-  "sourceUrl": "https://leetcode.com/problems/valid-parentheses/"
+    "questionId": 2,
+    "title": "Valid Parentheses",
+    "description": "Given a string containing just the characters...",
+    "categories": ["Stack", "Strings"],
+    "difficulty": "Easy",
+    "sourceUrl": "https://leetcode.com/problems/valid-parentheses/"
 }
 ```
 
@@ -358,33 +357,32 @@ Content-Type: application/json
 
 Typical error responses include:
 
-* `400 Bad Request`
+- `400 Bad Request`
+    - invalid question ID
 
-  * invalid question ID
-* `401 Unauthorized`
+- `401 Unauthorized`
+    - missing or invalid Bearer token
+    - failed auth resolution with User Service
 
-  * missing or invalid Bearer token
-  * failed auth resolution with User Service
-* `403 Forbidden`
+- `403 Forbidden`
+    - authenticated but insufficient permissions
 
-  * authenticated but insufficient permissions
-* `404 Not Found`
+- `404 Not Found`
+    - question not found
 
-  * question not found
-* `500 Internal Server Error`
-
-  * unexpected server/database issues
+- `500 Internal Server Error`
+    - unexpected server/database issues
 
 ---
 
 ## Local Development Notes
 
-* The frontend origin currently allowed by CORS is:
+- The frontend origin currently allowed by CORS is:
+    - `http://localhost:5173`
 
-  * `http://localhost:5173`
-* For protected route testing, User Service must be running unless the internal auth call is mocked.
-* The internal service token is **backend-only** and must never be exposed to the frontend.
-* Refresh tokens remain User-Service-only and are not used by Question Service.
+- For protected route testing, User Service must be running unless the internal auth call is mocked.
+- The internal service token is **backend-only** and must never be exposed to the frontend.
+- Refresh tokens remain User-Service-only and are not used by Question Service.
 
 ---
 
@@ -409,9 +407,9 @@ Authorization: Bearer <access_token>
 
 3. Test:
 
-* authenticated read access with a normal user
-* admin-only write access with an admin
-* role change behavior via User Service
+- authenticated read access with a normal user
+- admin-only write access with an admin
+- role change behavior via User Service
 
 ---
 
@@ -419,11 +417,11 @@ Authorization: Bearer <access_token>
 
 Potential future improvements include:
 
-* request validation with Zod
-* pagination for large question sets
-* random question retrieval by category/difficulty
-* image support inside question content
-* soft delete instead of permanent deletion
-* optimistic concurrency/versioning for admin updates
+- request validation with Zod
+- pagination for large question sets
+- random question retrieval by category/difficulty
+- image support inside question content
+- soft delete instead of permanent deletion
+- optimistic concurrency/versioning for admin updates
 
 ---
