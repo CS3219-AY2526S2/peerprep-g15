@@ -56,13 +56,19 @@ export class MatchingController {
                 });
             }
 
-            const result = await joinQueue({
-                userId,
-                topic,
-                difficulty: difficulty as 'easy' | 'medium' | 'hard',
-                proficiency:
-                    typeof req.body?.proficiency === 'number' ? req.body.proficiency : undefined,
-            }, undefined, accessToken);
+            const result = await joinQueue(
+                {
+                    userId,
+                    topic,
+                    difficulty: difficulty as 'easy' | 'medium' | 'hard',
+                    proficiency:
+                        typeof req.body?.proficiency === 'number'
+                            ? req.body.proficiency
+                            : undefined,
+                },
+                undefined,
+                accessToken,
+            );
 
             if (result.state === 'matched') {
                 return res.status(200).json({

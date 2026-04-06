@@ -7,7 +7,13 @@ import {
     matchDocumentToResult,
     queueDocumentToEntry,
 } from '../models/matching-persistence-model';
-import type { Difficulty, MatchRequest, MatchResult, QueueEntry, QueueStatus } from '../models/matching-model';
+import type {
+    Difficulty,
+    MatchRequest,
+    MatchResult,
+    QueueEntry,
+    QueueStatus,
+} from '../models/matching-model';
 import { fetchRandomQuestionForMatch } from './question-service';
 
 export interface MatchingRepository {
@@ -20,7 +26,12 @@ export interface MatchingRepository {
     removeQueuedUser(userId: string): Promise<QueueEntry | null>;
     saveMatch(match: MatchResult): Promise<void>;
     endMatch(matchId: string): Promise<boolean>;
-    recordQueueEvent(entry: QueueEntry, eventType: 'queued' | 'matched' | 'left' | 'timed_out', nowMs: number, matchId?: string): Promise<void>;
+    recordQueueEvent(
+        entry: QueueEntry,
+        eventType: 'queued' | 'matched' | 'left' | 'timed_out',
+        nowMs: number,
+        matchId?: string,
+    ): Promise<void>;
     recordMatchHistory(match: MatchResult): Promise<void>;
     markMatchHistoryEnded(matchId: string, nowMs: number): Promise<void>;
 }

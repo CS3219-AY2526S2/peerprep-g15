@@ -248,7 +248,12 @@ test('POST /matching/join queues first user and matches second user with same cr
     assert.equal(secondJoin.status, 200);
     const secondJson = secondJoin.json as {
         message: string;
-        match: { userIds: string[]; topic: string; difficulty: string; question?: { questionId: number } };
+        match: {
+            userIds: string[];
+            topic: string;
+            difficulty: string;
+            question?: { questionId: number };
+        };
     };
     assert.equal(secondJson.message, 'Matched successfully');
     assert.deepEqual(secondJson.match.userIds, ['user-a', 'user-b']);
@@ -869,12 +874,7 @@ test('POST /matching/end returns 404 for non-existent match', async () => {
 test('POST /matching/end requires matchId', async () => {
     const token = createToken('user-end-noid');
 
-    const result = await request(
-        'POST',
-        '/matching/end',
-        {},
-        token,
-    );
+    const result = await request('POST', '/matching/end', {}, token);
 
     assert.equal(result.status, 400);
     assert.deepEqual(result.json, {

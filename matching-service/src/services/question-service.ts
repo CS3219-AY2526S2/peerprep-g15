@@ -64,7 +64,9 @@ function parseQuestions(payload: unknown): MatchedQuestion[] {
 
 function hasTopic(question: MatchedQuestion, topic: string) {
     const normalizedTopic = topic.trim().toLowerCase();
-    return question.categories.some((category) => category.trim().toLowerCase() === normalizedTopic);
+    return question.categories.some(
+        (category) => category.trim().toLowerCase() === normalizedTopic,
+    );
 }
 
 function pickRandomQuestion(questions: MatchedQuestion[]) {
