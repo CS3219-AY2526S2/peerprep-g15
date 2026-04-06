@@ -7,8 +7,8 @@ import {
 
 const router = Router();
 
-router.post('/', createSessionHandler);
-router.get('/:roomId', getSessionHandler);
-router.delete('/:roomId', endSessionHandler);
+router.post('/create', createSessionHandler);
+router.get('/room/:roomId', getSessionHandler);
+router.delete('/room/:roomId', endSessionHandler);
 
 export default router;
