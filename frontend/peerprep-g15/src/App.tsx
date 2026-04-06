@@ -6,14 +6,16 @@ import Admin from './pages/Admin';
 import AddQuestion from './pages/AddQuestion';
 import Questions from './pages/Questions';
 import MatchPage from './pages/MatchPage';
+import Collab from './pages/Collab';
 
 const App = () => {
     return (
         <BrowserRouter>
             <Routes>
-                <Route path="/" element={<Login />} />
+                {/* <Route path="/" element={<Login />} /> */}
                 <Route path="/home" element={<Home />} />
                 <Route path="/home/match" element={<MatchPage />} />
+                <Route path="/" element={<Collab />} />
                 <Route path="/admin/home" element={<Admin />} />
                 <Route path="/admin/questions" element={<Questions />} />
                 <Route path="/admin/questions/add-question" element={<AddQuestion />} />

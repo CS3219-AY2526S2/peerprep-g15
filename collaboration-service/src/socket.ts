@@ -45,6 +45,10 @@ export function initSocket(server: http.Server) {
 
             const usersInRoom = io.sockets.adapter.rooms.get(roomId)?.size ?? 0;
 
+            if (usersInRoom === 2) {
+                io.to(roomId).emit('user-joined', { timeRemaining: 30 }); 
+            }
+
             // only start language timer once
             if (usersInRoom == 2 && !languageTimers.has(roomId)) {
                 const timer = setTimeout(async () => {
@@ -90,16 +94,28 @@ export function initSocket(server: http.Server) {
         // user disconnects
         socket.on('disconnect', async () => {
             const { roomId, userId } = socket.data;
+            console.log('=== DISCONNECT === roomId:', roomId, 'userId:', userId);
             if (!roomId || !userId) return;
+            
+            const session = await getSession(roomId);
+            const usersInRoom = io.sockets.adapter.rooms.get(roomId)?.size ?? 0;
 
-            const timer = setTimeout(async () => {
-                const sessionEnded = await handleDisconnect(roomId);
-                if (sessionEnded) {
-                    io.to(roomId).emit('session-ended', { reason: 'disconnect' });
-                }
-            }, 30000);
+            if (session?.status === 'active') {
+                io.to(roomId).emit('user-disconnected', { userId });
 
-            disconnectTimers.set(userId, timer);
+                const timer = setTimeout(async () => {
+                    const sessionEnded = await handleDisconnect(roomId);
+                    if (sessionEnded) {
+                        io.to(roomId).emit('session-ended', { reason: 'disconnect' });
+                    }
+                }, 30000);
+
+                disconnectTimers.set(userId, timer);
+            } else if (session?.status === 'pending' && usersInRoom >= 1) {
+                // Only end if the other user is still there (meaning someone left after both joined)
+                await endSession(roomId);
+                io.to(roomId).emit('session-ended', { reason: 'disconnect' });
+            }
         });
 
         // user runs code
