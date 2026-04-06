@@ -16,6 +16,7 @@ export interface MatchingRepository {
     enqueue(entry: QueueEntry): Promise<void>;
     removeQueuedUser(userId: string): Promise<QueueEntry | null>;
     saveMatch(match: MatchResult): Promise<void>;
+    endMatch(matchId: string): Promise<boolean>;
 }
 
 const TOPIC_EXPANSION_WAIT_MS = 15_000;
@@ -66,6 +67,15 @@ class MongoMatchingRepository implements MatchingRepository {
             ...match,
             createdAt: new Date(match.createdAt),
         });
+    }
+
+    async endMatch(matchId: string) {
+        const result = await MatchModel.findOneAndUpdate(
+            { matchId },
+            { endedAt: new Date() },
+            { new: true },
+        );
+        return result !== null;
     }
 }
 
@@ -139,6 +149,18 @@ class InMemoryMatchingRepository implements MatchingRepository {
     async saveMatch(match: MatchResult) {
         this.matchByUserId.set(match.userIds[0], match);
         this.matchByUserId.set(match.userIds[1], match);
+    }
+
+    async endMatch(matchId: string) {
+        let found = false;
+        for (const [userId, match] of this.matchByUserId.entries()) {
+            if (match.matchId === matchId) {
+                const updatedMatch = { ...match, endedAt: new Date().toISOString() };
+                this.matchByUserId.set(userId, updatedMatch);
+                found = true;
+            }
+        }
+        return found;
     }
 }
 
@@ -346,6 +368,12 @@ export async function getQueueStatus(userId: string, nowMs = Date.now()): Promis
         userId,
         state: 'not_found',
     };
+}
+
+// Ends a match by matchId and returns whether the match was found and deleted.
+export async function endMatch(matchId: string) {
+    const removed = await repository.endMatch(matchId);
+    return removed;
 }
 
 // Flattens all criteria buckets into a single queue snapshot for debugging/admin views.

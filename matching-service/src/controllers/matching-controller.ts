@@ -4,6 +4,7 @@ import {
     joinQueue,
     leaveQueue,
     listQueuedUsers,
+    endMatch,
 } from '../services/matching-service';
 import type { AuthenticatedRequest } from '../middleware/auth-middleware';
 
@@ -125,5 +126,30 @@ export class MatchingController {
         return res.status(200).json({
             queuedUsers: await listQueuedUsers(),
         });
+    }
+
+    static async end(req: Request, res: Response, next: NextFunction) {
+        try {
+            const matchId = getRequiredString(req.body?.matchId);
+
+            if (!matchId) {
+                return res.status(400).json({
+                    message: 'matchId is required',
+                });
+            }
+
+            const removed = await endMatch(matchId);
+            if (!removed) {
+                return res.status(404).json({
+                    message: 'Match not found',
+                });
+            }
+
+            return res.status(200).json({
+                message: 'Match ended successfully',
+            });
+        } catch (err) {
+            next(err);
+        }
     }
 }

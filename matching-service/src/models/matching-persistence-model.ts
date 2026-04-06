@@ -15,6 +15,7 @@ export interface MatchDocument {
     topic: string;
     difficulty: Difficulty;
     createdAt: Date;
+    endedAt?: Date;
 }
 
 const queueSchema = new Schema<QueueDocument>(
@@ -35,6 +36,7 @@ const matchSchema = new Schema<MatchDocument>(
         topic: { type: String, required: true, trim: true },
         difficulty: { type: String, required: true, enum: ['easy', 'medium', 'hard'] },
         createdAt: { type: Date, required: true },
+        endedAt: { type: Date },
     },
     { timestamps: false },
 );
@@ -59,5 +61,6 @@ export function matchDocumentToResult(document: MatchDocument): MatchResult {
         topic: document.topic,
         difficulty: document.difficulty,
         createdAt: document.createdAt.toISOString(),
+        endedAt: document.endedAt?.toISOString(),
     };
 }

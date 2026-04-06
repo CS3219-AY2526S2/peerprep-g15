@@ -17,6 +17,7 @@ export interface MatchResult {
     topic: string;
     difficulty: Difficulty;
     createdAt: string;
+    endedAt?: string;
 }
 
 export type QueueState = 'queued' | 'matched' | 'timed_out' | 'not_found';

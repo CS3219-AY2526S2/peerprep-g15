@@ -7,6 +7,7 @@ import {
     getQueueStatus,
     joinQueue,
     listQueuedUsers,
+    endMatch,
     createInMemoryMatchingRepository,
     pickBestWaitingUserIndex,
     resetMatchingState,
@@ -629,4 +630,87 @@ test('expired queued users are never matched with new joiners', async () => {
     const currentQueue = await listQueuedUsers(baseTimeMs + 60_000);
     assert.equal(currentQueue.length, 1);
     assert.equal(currentQueue[0].userId, 'user-fresh');
+});
+
+test('POST /matching/end successfully ends a match', async () => {
+    const tokenA = createToken('user-end-a');
+    const tokenB = createToken('user-end-b');
+
+    const joined = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-end-a',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenA,
+    );
+    assert.equal(joined.status, 202);
+
+    const matched = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-end-b',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenB,
+    );
+    assert.equal(matched.status, 200);
+
+    const matchedJson = matched.json as { match: { matchId: string } };
+    const matchId = matchedJson.match.matchId;
+
+    const ended = await request(
+        'POST',
+        '/matching/end',
+        {
+            matchId,
+        },
+        tokenA,
+    );
+    assert.equal(ended.status, 200);
+    assert.deepEqual(ended.json, {
+        message: 'Match ended successfully',
+    });
+
+    const status = await getQueueStatus('user-end-a');
+    assert.equal(status.state, 'matched');
+    assert.equal(typeof (status.match as any)?.endedAt, 'string');
+});
+
+test('POST /matching/end returns 404 for non-existent match', async () => {
+    const token = createToken('user-end-notfound');
+
+    const result = await request(
+        'POST',
+        '/matching/end',
+        {
+            matchId: 'non-existent-match-id',
+        },
+        token,
+    );
+
+    assert.equal(result.status, 404);
+    assert.deepEqual(result.json, {
+        message: 'Match not found',
+    });
+});
+
+test('POST /matching/end requires matchId', async () => {
+    const token = createToken('user-end-noid');
+
+    const result = await request(
+        'POST',
+        '/matching/end',
+        {},
+        token,
+    );
+
+    assert.equal(result.status, 400);
+    assert.deepEqual(result.json, {
+        message: 'matchId is required',
+    });
 });

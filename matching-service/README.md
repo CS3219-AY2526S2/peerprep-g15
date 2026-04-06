@@ -136,6 +136,40 @@ Responses:
 - `403 Forbidden` when the `userId` does not match the authenticated user.
 - `404 Not Found` when the user is not currently queued.
 
+### End
+
+`POST /matching/end` - End a match.
+
+Use this when the match session is complete and should be marked as ended.
+
+Headers:
+
+- `Content-Type: application/json`
+- `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+    "matchId": "match-uuid-123"
+}
+```
+
+Example:
+
+```bash
+curl -X POST http://localhost:3003/matching/end \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <accessToken>" \
+  -d '{"matchId":"match-uuid-123"}'
+```
+
+Responses:
+
+- `200 OK` when the match is marked as ended.
+- `400 Bad Request` when `matchId` is missing.
+- `404 Not Found` when the match is not found.
+
 ### Status
 
 `GET /matching/status/:userId` - Get queue status for a user.
