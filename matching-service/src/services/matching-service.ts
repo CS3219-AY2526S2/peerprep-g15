@@ -1,11 +1,20 @@
 import { randomUUID } from 'crypto';
 import {
+    MatchHistoryModel,
     MatchModel,
+    QueueHistoryModel,
     QueueModel,
     matchDocumentToResult,
     queueDocumentToEntry,
 } from '../models/matching-persistence-model';
-import type { MatchRequest, MatchResult, QueueEntry, QueueStatus } from '../models/matching-model';
+import type {
+    Difficulty,
+    MatchRequest,
+    MatchResult,
+    QueueEntry,
+    QueueStatus,
+} from '../models/matching-model';
+import { fetchRandomQuestionForMatch } from './question-service';
 
 export interface MatchingRepository {
     clear(): Promise<void>;
@@ -16,15 +25,34 @@ export interface MatchingRepository {
     enqueue(entry: QueueEntry): Promise<void>;
     removeQueuedUser(userId: string): Promise<QueueEntry | null>;
     saveMatch(match: MatchResult): Promise<void>;
+    endMatch(matchId: string): Promise<boolean>;
+    recordQueueEvent(
+        entry: QueueEntry,
+        eventType: 'queued' | 'matched' | 'left' | 'timed_out',
+        nowMs: number,
+        matchId?: string,
+    ): Promise<void>;
+    recordMatchHistory(match: MatchResult): Promise<void>;
+    markMatchHistoryEnded(matchId: string, nowMs: number): Promise<void>;
 }
 
 const TOPIC_EXPANSION_WAIT_MS = 15_000;
 const FIFO_EXPANSION_WAIT_MS = 30_000;
 const QUEUE_TIMEOUT_MS = 60_000;
+const DIFFICULTY_RANK: Record<Difficulty, number> = {
+    easy: 0,
+    medium: 1,
+    hard: 2,
+};
 
 class MongoMatchingRepository implements MatchingRepository {
     async clear() {
-        await Promise.all([QueueModel.deleteMany({}), MatchModel.deleteMany({})]);
+        await Promise.all([
+            QueueModel.deleteMany({}),
+            MatchModel.deleteMany({}),
+            QueueHistoryModel.deleteMany({}),
+            MatchHistoryModel.deleteMany({}),
+        ]);
     }
 
     async purgeTimedOut(nowMs: number) {
@@ -66,6 +94,58 @@ class MongoMatchingRepository implements MatchingRepository {
             ...match,
             createdAt: new Date(match.createdAt),
         });
+    }
+
+    async endMatch(matchId: string) {
+        const result = await MatchModel.findOneAndUpdate(
+            { matchId },
+            { endedAt: new Date() },
+            { new: true },
+        );
+        return result !== null;
+    }
+
+    async recordQueueEvent(
+        entry: QueueEntry,
+        eventType: 'queued' | 'matched' | 'left' | 'timed_out',
+        nowMs: number,
+        matchId?: string,
+    ) {
+        await QueueHistoryModel.create({
+            userId: entry.userId,
+            topic: entry.topic.trim(),
+            difficulty: entry.difficulty,
+            eventType,
+            matchId,
+            occurredAt: new Date(nowMs),
+        });
+    }
+
+    async recordMatchHistory(match: MatchResult) {
+        await MatchHistoryModel.updateOne(
+            { matchId: match.matchId },
+            {
+                $set: {
+                    userIds: match.userIds,
+                    topic: match.topic.trim(),
+                    difficulty: match.difficulty,
+                    question: match.question,
+                    createdAt: new Date(match.createdAt),
+                },
+            },
+            { upsert: true },
+        );
+    }
+
+    async markMatchHistoryEnded(matchId: string, nowMs: number) {
+        await MatchHistoryModel.updateOne(
+            { matchId },
+            {
+                $set: {
+                    endedAt: new Date(nowMs),
+                },
+            },
+        );
     }
 }
 
@@ -140,6 +220,35 @@ class InMemoryMatchingRepository implements MatchingRepository {
         this.matchByUserId.set(match.userIds[0], match);
         this.matchByUserId.set(match.userIds[1], match);
     }
+
+    async endMatch(matchId: string) {
+        let found = false;
+        for (const [userId, match] of this.matchByUserId.entries()) {
+            if (match.matchId === matchId) {
+                const updatedMatch = { ...match, endedAt: new Date().toISOString() };
+                this.matchByUserId.set(userId, updatedMatch);
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    async recordQueueEvent(
+        _entry: QueueEntry,
+        _eventType: 'queued' | 'matched' | 'left' | 'timed_out',
+        _nowMs: number,
+        _matchId?: string,
+    ) {
+        // No-op in memory repository for tests.
+    }
+
+    async recordMatchHistory(_match: MatchResult) {
+        // No-op in memory repository for tests.
+    }
+
+    async markMatchHistoryEnded(_matchId: string, _nowMs: number) {
+        // No-op in memory repository for tests.
+    }
 }
 
 let repository: MatchingRepository = new MongoMatchingRepository();
@@ -158,6 +267,28 @@ export function setMatchingRepository(nextRepository?: MatchingRepository) {
 // Normalizes topic+difficulty into a stable bucket key for queue grouping.
 function createCriteriaKey(topic: string, difficulty: string) {
     return `${topic.trim().toLowerCase()}::${difficulty}`;
+}
+
+function pickMatchTopic(waitingUserTopic: string, joiningUserTopic: string) {
+    const normalizedWaitingTopic = waitingUserTopic.trim().toLowerCase();
+    const normalizedJoiningTopic = joiningUserTopic.trim().toLowerCase();
+
+    if (normalizedWaitingTopic === normalizedJoiningTopic) {
+        return joiningUserTopic.trim();
+    }
+
+    return Math.random() < 0.5 ? waitingUserTopic.trim() : joiningUserTopic.trim();
+}
+
+function pickLowerDifficulty(first: Difficulty, second: Difficulty): Difficulty {
+    return DIFFICULTY_RANK[first] <= DIFFICULTY_RANK[second] ? first : second;
+}
+
+function resolveMatchCriteria(waitingUser: QueueEntry, joiningUser: QueueEntry) {
+    return {
+        topic: pickMatchTopic(waitingUser.topic, joiningUser.topic),
+        difficulty: pickLowerDifficulty(waitingUser.difficulty, joiningUser.difficulty),
+    };
 }
 
 // Returns how long a queued user has waited in milliseconds.
@@ -262,13 +393,141 @@ function findBestWaitingCandidate(queue: QueueEntry[], joiningUser: QueueEntry, 
     return queue[selectedIndex];
 }
 
+async function safeRecordQueueEvent(
+    entry: QueueEntry,
+    eventType: 'queued' | 'matched' | 'left' | 'timed_out',
+    nowMs: number,
+    matchId?: string,
+) {
+    try {
+        await repository.recordQueueEvent(entry, eventType, nowMs, matchId);
+    } catch (error) {
+        console.error('Failed to write queue history event', {
+            userId: entry.userId,
+            eventType,
+            matchId,
+            error,
+        });
+    }
+}
+
+async function safeRecordMatchHistory(match: MatchResult) {
+    try {
+        await repository.recordMatchHistory(match);
+    } catch (error) {
+        console.error('Failed to write match history record', {
+            matchId: match.matchId,
+            error,
+        });
+    }
+}
+
+async function safeMarkMatchHistoryEnded(matchId: string, nowMs: number) {
+    try {
+        await repository.markMatchHistoryEnded(matchId, nowMs);
+    } catch (error) {
+        console.error('Failed to mark match history ended', {
+            matchId,
+            error,
+        });
+    }
+}
+
+async function ensureMatchHasQuestion(match: MatchResult, accessToken?: string) {
+    if (match.question) {
+        return match;
+    }
+
+    const question = await fetchRandomQuestionForMatch(match.topic, match.difficulty, accessToken);
+    if (!question) {
+        console.warn('Unable to hydrate question for existing match', {
+            matchId: match.matchId,
+            topic: match.topic,
+            difficulty: match.difficulty,
+        });
+        return match;
+    }
+
+    return {
+        ...match,
+        question,
+    };
+}
+
+async function attemptMatchForEntry(
+    entry: QueueEntry,
+    nowMs: number,
+    accessToken: string | undefined,
+    joiningUserAlreadyQueued: boolean,
+) {
+    const queuedUsers = await repository.listQueuedUsers(nowMs);
+    const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
+    if (!waitingUser) {
+        return null;
+    }
+
+    const criteria = resolveMatchCriteria(waitingUser, entry);
+    const question = await fetchRandomQuestionForMatch(
+        criteria.topic,
+        criteria.difficulty,
+        accessToken,
+    );
+
+    if (!question) {
+        console.warn('Match candidate found but no valid question available, keeping user queued', {
+            joiningUserId: entry.userId,
+            waitingUserId: waitingUser.userId,
+            topic: criteria.topic,
+            difficulty: criteria.difficulty,
+        });
+        return null;
+    }
+
+    if (joiningUserAlreadyQueued) {
+        const removedJoiningUser = await repository.removeQueuedUser(entry.userId);
+        if (!removedJoiningUser) {
+            return null;
+        }
+
+        const removedWaitingUser = await repository.removeQueuedUser(waitingUser.userId);
+        if (!removedWaitingUser) {
+            await repository.enqueue(removedJoiningUser);
+            return null;
+        }
+    } else {
+        const removedWaitingUser = await repository.removeQueuedUser(waitingUser.userId);
+        if (!removedWaitingUser) {
+            return null;
+        }
+    }
+
+    const match: MatchResult = {
+        matchId: randomUUID(),
+        userIds: [waitingUser.userId, entry.userId],
+        topic: criteria.topic,
+        difficulty: criteria.difficulty,
+        question,
+        createdAt: new Date(nowMs).toISOString(),
+    };
+
+    await repository.saveMatch(match);
+    await Promise.all([
+        safeRecordQueueEvent(waitingUser, 'matched', nowMs, match.matchId),
+        safeRecordQueueEvent(entry, 'matched', nowMs, match.matchId),
+        safeRecordMatchHistory(match),
+    ]);
+
+    return match;
+}
+
 // Attempts to match immediately from staged policy; otherwise enqueues the user.
-export async function joinQueue(request: MatchRequest, nowMs = Date.now()) {
+export async function joinQueue(request: MatchRequest, nowMs = Date.now(), accessToken?: string) {
     await repository.purgeTimedOut(nowMs);
 
     const existingMatch = await repository.getMatchByUserId(request.userId);
     if (existingMatch) {
-        return { state: 'matched' as const, match: existingMatch };
+        const hydratedMatch = await ensureMatchHasQuestion(existingMatch, accessToken);
+        return { state: 'matched' as const, match: hydratedMatch };
     }
 
     const existingQueuedEntry = await repository.getQueuedUserEntry(request.userId);
@@ -282,24 +541,13 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now()) {
         joinedAt: new Date(nowMs).toISOString(),
     };
 
-    const queuedUsers = await repository.listQueuedUsers(nowMs);
-    const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
-    if (waitingUser) {
-        const match: MatchResult = {
-            matchId: randomUUID(),
-            userIds: [waitingUser.userId, entry.userId],
-            topic: entry.topic,
-            difficulty: entry.difficulty,
-            createdAt: new Date(nowMs).toISOString(),
-        };
-
-        await repository.removeQueuedUser(waitingUser.userId);
-        await repository.saveMatch(match);
-
+    const match = await attemptMatchForEntry(entry, nowMs, accessToken, false);
+    if (match) {
         return { state: 'matched' as const, match };
     }
 
     await repository.enqueue(entry);
+    await safeRecordQueueEvent(entry, 'queued', nowMs);
 
     return { state: 'queued' as const, entry };
 }
@@ -311,17 +559,24 @@ export async function leaveQueue(userId: string) {
         return false;
     }
 
+    await safeRecordQueueEvent(removed, 'left', Date.now());
+
     return true;
 }
 
 // Returns matched/queued/not_found state for a given user.
-export async function getQueueStatus(userId: string, nowMs = Date.now()): Promise<QueueStatus> {
+export async function getQueueStatus(
+    userId: string,
+    nowMs = Date.now(),
+    accessToken?: string,
+): Promise<QueueStatus> {
     const match = await repository.getMatchByUserId(userId);
     if (match) {
+        const hydratedMatch = await ensureMatchHasQuestion(match, accessToken);
         return {
             userId,
             state: 'matched',
-            match,
+            match: hydratedMatch,
         };
     }
 
@@ -329,9 +584,19 @@ export async function getQueueStatus(userId: string, nowMs = Date.now()): Promis
     if (entry) {
         if (isTimedOut(entry, nowMs)) {
             await repository.removeQueuedUser(userId);
+            await safeRecordQueueEvent(entry, 'timed_out', nowMs);
             return {
                 userId,
                 state: 'timed_out',
+            };
+        }
+
+        const rematched = await attemptMatchForEntry(entry, nowMs, accessToken, true);
+        if (rematched) {
+            return {
+                userId,
+                state: 'matched',
+                match: rematched,
             };
         }
 
@@ -346,6 +611,15 @@ export async function getQueueStatus(userId: string, nowMs = Date.now()): Promis
         userId,
         state: 'not_found',
     };
+}
+
+// Ends a match by matchId and returns whether the match was found and deleted.
+export async function endMatch(matchId: string) {
+    const removed = await repository.endMatch(matchId);
+    if (removed) {
+        await safeMarkMatchHistoryEnded(matchId, Date.now());
+    }
+    return removed;
 }
 
 // Flattens all criteria buckets into a single queue snapshot for debugging/admin views.

@@ -49,7 +49,7 @@ export function initSocket(server: http.Server) {
             const usersInRoom = io.sockets.adapter.rooms.get(roomId)?.size ?? 0;
 
             if (usersInRoom === 2) {
-                io.to(roomId).emit('user-joined', { timeRemaining: 30 }); 
+                io.to(roomId).emit('user-joined', { timeRemaining: 30 });
             }
 
             // only start language timer once
@@ -99,7 +99,7 @@ export function initSocket(server: http.Server) {
             const { roomId, userId } = socket.data;
             console.log('=== DISCONNECT === roomId:', roomId, 'userId:', userId);
             if (!roomId || !userId) return;
-            
+
             const session = await getSession(roomId);
             const usersInRoom = io.sockets.adapter.rooms.get(roomId)?.size ?? 0;
 
@@ -146,30 +146,33 @@ export function initSocket(server: http.Server) {
             },
         );
 
-        socket.on('submit-code', async (roomId: string, userId: string, code: string, language: string) => {
-            const session = await getSession(roomId);
-            if (!session || session.status !== 'active') return;
-            if (!session.userIds.includes(userId)) return;
+        socket.on(
+            'submit-code',
+            async (roomId: string, userId: string, code: string, language: string) => {
+                const session = await getSession(roomId);
+                if (!session || session.status !== 'active') return;
+                if (!session.userIds.includes(userId)) return;
 
-            try {
-                io.to(roomId).emit('code-executing');
-                const result = await executeCode(roomId, code, language);
+                try {
+                    io.to(roomId).emit('code-executing');
+                    const result = await executeCode(roomId, code, language);
 
-                // TODO: compare result.stdout with expected output from question service
-                // For now, just send the result and let frontend decide
+                    // TODO: compare result.stdout with expected output from question service
+                    // For now, just send the result and let frontend decide
 
-                const passed = result.status === 'Accepted' && !result.stderr;
-                
-                io.to(roomId).emit('submit-result', {
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                    status: result.status,
-                    passed: passed,
-                });
-            } catch (err) {
-                io.to(roomId).emit('code-error', { message: 'Execution failed' });
-            }
-        });
+                    const passed = result.status === 'Accepted' && !result.stderr;
+
+                    io.to(roomId).emit('submit-result', {
+                        stdout: result.stdout,
+                        stderr: result.stderr,
+                        status: result.status,
+                        passed: passed,
+                    });
+                } catch (err) {
+                    io.to(roomId).emit('code-error', { message: 'Execution failed' });
+                }
+            },
+        );
 
         socket.on('leave-session', async (roomId: string, userId: string) => {
             await endSession(roomId); // call service directly

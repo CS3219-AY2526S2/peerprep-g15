@@ -7,6 +7,7 @@ The matching service owns the MongoDB-backed queue used to pair users by topic a
 - Accepts authenticated join and leave requests.
 - Tracks queue status for each user in MongoDB.
 - Produces a match when a compatible waiting user is found and stores it in MongoDB.
+- Retrieves a random question for each new match using the resolved match topic and difficulty.
 - Exposes a queue snapshot for debugging and admin-style inspection.
 - Resolves access tokens through `user-service` instead of verifying JWTs locally.
 
@@ -18,6 +19,7 @@ The service reads these variables from the environment:
 - `MONGO_URI` - MongoDB connection string.
 - `MONGO_DB_NAME` - MongoDB database name.
 - `USER_SERVICE_URL` - Base URL for `user-service`, defaults to `http://localhost:3001`.
+- `QUESTION_SERVICE_URL` - Base URL for `question-service`, defaults to `http://localhost:3002`.
 - `INTERNAL_SERVICE_TOKEN` - Shared token used to call `user-service` internal auth endpoints.
 
 ## Run Commands
@@ -135,6 +137,40 @@ Responses:
 - `400 Bad Request` when `userId` is missing.
 - `403 Forbidden` when the `userId` does not match the authenticated user.
 - `404 Not Found` when the user is not currently queued.
+
+### End
+
+`POST /matching/end` - End a match.
+
+Use this when the match session is complete and should be marked as ended.
+
+Headers:
+
+- `Content-Type: application/json`
+- `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+    "matchId": "match-uuid-123"
+}
+```
+
+Example:
+
+```bash
+curl -X POST http://localhost:3003/matching/end \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <accessToken>" \
+  -d '{"matchId":"match-uuid-123"}'
+```
+
+Responses:
+
+- `200 OK` when the match is marked as ended.
+- `400 Bad Request` when `matchId` is missing.
+- `404 Not Found` when the match is not found.
 
 ### Status
 

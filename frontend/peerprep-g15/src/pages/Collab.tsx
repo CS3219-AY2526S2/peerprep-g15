@@ -39,7 +39,7 @@ const Collab = () => {
     } = location.state || {};
 
     const [socket, setSocket] = useState<Socket | null>(null);
-    const [session, setSession] = useState<SessionState | null>(null);
+    const [_session, setSession] = useState<SessionState | null>(null);
     const [code, setCode] = useState('');
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatInput, setChatInput] = useState('');
@@ -124,7 +124,7 @@ const Collab = () => {
             setCodeResult({ error: err.message });
         });
 
-        s.on('session-ended',() => {
+        s.on('session-ended', () => {
             setSessionStatus('ended');
         });
 
@@ -169,7 +169,7 @@ const Collab = () => {
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
         };
-    }, [sessionStatus,  partnerJoined]);
+    }, [sessionStatus, partnerJoined]);
 
     useEffect(() => {
         if (partnerDisconnected) {
@@ -254,22 +254,32 @@ const Collab = () => {
         return (
             <>
                 <NavBar name={name} />
-                <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '80vh' }}>
+                <div
+                    className="d-flex justify-content-center align-items-center"
+                    style={{ minHeight: '80vh' }}
+                >
                     <div className="card shadow-lg" style={{ width: '450px' }}>
                         <div className="card-body text-center">
                             <h3 className="card-title mb-3">Select Language</h3>
 
                             {!partnerJoined ? (
                                 <>
-                                    <div className="spinner-border text-primary mb-3" role="status" />
+                                    <div
+                                        className="spinner-border text-primary mb-3"
+                                        role="status"
+                                    />
                                     <p className="text-muted">Waiting for partner to join...</p>
                                 </>
                             ) : (
                                 <>
                                     <div className="mb-3">
-                                        <span className="badge bg-warning text-dark fs-5">{timer}s</span>
+                                        <span className="badge bg-warning text-dark fs-5">
+                                            {timer}s
+                                        </span>
                                     </div>
-                                    <p className="text-muted">Both users must agree on a language</p>
+                                    <p className="text-muted">
+                                        Both users must agree on a language
+                                    </p>
 
                                     <div className="d-flex flex-column gap-2 mb-4">
                                         {['python', 'javascript', 'java', 'cpp'].map((lang) => (
@@ -293,10 +303,14 @@ const Collab = () => {
                                     </button>
 
                                     {lockedIn && !partnerLockedIn && (
-                                        <p className="text-muted mt-2">Waiting for partner to lock in...</p>
+                                        <p className="text-muted mt-2">
+                                            Waiting for partner to lock in...
+                                        </p>
                                     )}
                                     {partnerLockedIn && !lockedIn && (
-                                        <p className="text-info mt-2">Your partner has locked in!</p>
+                                        <p className="text-info mt-2">
+                                            Your partner has locked in!
+                                        </p>
                                     )}
                                 </>
                             )}
@@ -310,7 +324,10 @@ const Collab = () => {
     // Mismatch / timeout / ended screens
     if (sessionStatus === 'mismatch' || sessionStatus === 'timeout' || sessionStatus === 'ended') {
         const statusMessages: Record<string, { title: string; msg: string }> = {
-            mismatch: { title: 'Language Mismatch', msg: 'You and your partner chose different languages.' },
+            mismatch: {
+                title: 'Language Mismatch',
+                msg: 'You and your partner chose different languages.',
+            },
             timeout: { title: 'Time Out', msg: 'Language selection timed out.' },
             ended: { title: 'Session Ended', msg: 'The collaboration session has ended.' },
         };
@@ -319,12 +336,17 @@ const Collab = () => {
         return (
             <>
                 <NavBar name={name} />
-                <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '80vh' }}>
+                <div
+                    className="d-flex justify-content-center align-items-center"
+                    style={{ minHeight: '80vh' }}
+                >
                     <div className="card shadow-lg text-center" style={{ width: '400px' }}>
                         <div className="card-body">
                             <h3 className="text-danger">{title}</h3>
                             <p className="text-muted">{msg}</p>
-                            <a href="/" className="btn btn-primary">Back to Home</a>
+                            <a href="/" className="btn btn-primary">
+                                Back to Home
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -350,24 +372,24 @@ const Collab = () => {
                         </div>
                     )}
                     <div className="d-flex gap-2">
-                    <button
-                        className="btn btn-sm btn-success"
-                        onClick={handleRunCode}
-                        disabled={isExecuting}
-                    >
-                        {isExecuting ? 'Running...' : 'Run Code'}
-                    </button>
-                    <button
-                        className="btn btn-sm btn-warning"
-                        onClick={handleSubmit}
-                        disabled={isExecuting}
-                    >
-                        Submit
-                    </button>
-                    <button className="btn btn-sm btn-danger" onClick={handleLeave}>
-                        Leave Session
-                    </button>
-                </div>
+                        <button
+                            className="btn btn-sm btn-success"
+                            onClick={handleRunCode}
+                            disabled={isExecuting}
+                        >
+                            {isExecuting ? 'Running...' : 'Run Code'}
+                        </button>
+                        <button
+                            className="btn btn-sm btn-warning"
+                            onClick={handleSubmit}
+                            disabled={isExecuting}
+                        >
+                            Submit
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={handleLeave}>
+                            Leave Session
+                        </button>
+                    </div>
                 </div>
 
                 {/* Main content */}
@@ -375,11 +397,15 @@ const Collab = () => {
                     {/* Left: Question */}
                     <div className="col-3 border-end p-3 overflow-auto" style={{ height: '100%' }}>
                         <div className="d-flex gap-2 mb-2">
-                            <span className={`badge ${questionDifficulty === 'Easy' ? 'bg-success' : questionDifficulty === 'Medium' ? 'bg-warning' : 'bg-danger'}`}>
+                            <span
+                                className={`badge ${questionDifficulty === 'Easy' ? 'bg-success' : questionDifficulty === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
+                            >
                                 {questionDifficulty}
                             </span>
                             {questionCategories.map((cat: string) => (
-                                <span key={cat} className="badge bg-secondary">{cat}</span>
+                                <span key={cat} className="badge bg-secondary">
+                                    {cat}
+                                </span>
                             ))}
                         </div>
                         <h5>{questionTitle}</h5>
@@ -398,11 +424,16 @@ const Collab = () => {
                             placeholder="Write your code here..."
                         />
                         {/* Output panel */}
-                        <div className="border-top p-2 bg-dark text-white" style={{ height: '150px', overflowY: 'auto', fontSize: '0.85rem' }}>
+                        <div
+                            className="border-top p-2 bg-dark text-white"
+                            style={{ height: '150px', overflowY: 'auto', fontSize: '0.85rem' }}
+                        >
                             <strong>Output:</strong>
                             {isExecuting && <p className="text-warning mb-0">Executing...</p>}
                             {codeResult && !codeResult.error && (
-                                <pre className="mb-0 text-success">{codeResult.stdout || 'No output'}</pre>
+                                <pre className="mb-0 text-success">
+                                    {codeResult.stdout || 'No output'}
+                                </pre>
                             )}
                             {codeResult?.stderr && (
                                 <pre className="mb-0 text-danger">{codeResult.stderr}</pre>
@@ -412,7 +443,8 @@ const Collab = () => {
                             )}
                             {codeResult && (
                                 <small className="text-muted">
-                                    Status: {codeResult.status} | Time: {codeResult.time}s | Memory: {codeResult.memory}KB
+                                    Status: {codeResult.status} | Time: {codeResult.time}s | Memory:{' '}
+                                    {codeResult.memory}KB
                                 </small>
                             )}
                         </div>
@@ -423,9 +455,15 @@ const Collab = () => {
                         <div className="p-2 border-bottom bg-light">
                             <strong>Chat</strong>
                         </div>
-                        <div className="flex-grow-1 overflow-auto p-2" style={{ fontSize: '0.85rem' }}>
+                        <div
+                            className="flex-grow-1 overflow-auto p-2"
+                            style={{ fontSize: '0.85rem' }}
+                        >
                             {messages.map((msg, i) => (
-                                <div key={i} className={`mb-2 ${msg.senderId === userId ? 'text-end' : ''}`}>
+                                <div
+                                    key={i}
+                                    className={`mb-2 ${msg.senderId === userId ? 'text-end' : ''}`}
+                                >
                                     <small className="text-muted d-block">{msg.username}</small>
                                     <span
                                         className={`d-inline-block px-2 py-1 rounded ${msg.senderId === userId ? 'bg-primary text-white' : 'bg-light border'}`}
@@ -446,7 +484,10 @@ const Collab = () => {
                                     onChange={(e) => setChatInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                                 />
-                                <button className="btn btn-sm btn-primary" onClick={handleSendMessage}>
+                                <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={handleSendMessage}
+                                >
                                     Send
                                 </button>
                             </div>
@@ -455,7 +496,10 @@ const Collab = () => {
                 </div>
             </div>
             {submitResult?.passed && (
-                <div className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000 }}>
+                <div
+                    className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000 }}
+                >
                     <div className="card shadow-lg text-center" style={{ width: '400px' }}>
                         <div className="card-body">
                             <h3 className="text-success">Correct Answer!</h3>
@@ -469,7 +513,10 @@ const Collab = () => {
             )}
 
             {submitResult && !submitResult.passed && (
-                <div className="position-fixed bottom-0 start-50 translate-middle-x mb-3" style={{ zIndex: 1000 }}>
+                <div
+                    className="position-fixed bottom-0 start-50 translate-middle-x mb-3"
+                    style={{ zIndex: 1000 }}
+                >
                     <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
                         <strong>Wrong Answer.</strong> Keep trying!
                         <button className="btn-close" onClick={() => setSubmitResult(null)} />

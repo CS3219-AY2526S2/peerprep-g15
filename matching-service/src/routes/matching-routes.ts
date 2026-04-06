@@ -7,6 +7,7 @@ const router = Router();
 router.get('/health', MatchingController.health);
 router.post('/join', requireAuth, MatchingController.join);
 router.post('/leave', requireAuth, MatchingController.leave);
+router.post('/end', requireAuth, MatchingController.end);
 router.get('/status/:userId', requireAuth, MatchingController.status);
 router.get('/queue', requireAuth, MatchingController.queue);
 

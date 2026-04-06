@@ -7,13 +7,15 @@ import {
     getQueueStatus,
     joinQueue,
     listQueuedUsers,
+    endMatch,
     createInMemoryMatchingRepository,
     pickBestWaitingUserIndex,
     resetMatchingState,
     setMatchingRepository,
 } from '../services/matching-service';
 import { setAuthServiceFetch } from '../services/auth-service.js';
-import type { QueueEntry } from '../models/matching-model';
+import { setQuestionServiceFetch } from '../services/question-service';
+import type { MatchResult, QueueEntry } from '../models/matching-model';
 
 let server: Server;
 let baseUrl: string;
@@ -28,9 +30,48 @@ type ResolvedUser = {
 };
 
 const accessTokens = new Map<string, ResolvedUser>();
+const questions = [
+    {
+        questionId: 1,
+        title: 'Array Pair Sum',
+        difficulty: 'Easy',
+        categories: ['arrays'],
+    },
+    {
+        questionId: 2,
+        title: 'Graph Traversal Basics',
+        difficulty: 'Easy',
+        categories: ['graphs'],
+    },
+    {
+        questionId: 3,
+        title: 'DP Warmup',
+        difficulty: 'Medium',
+        categories: ['dp'],
+    },
+    {
+        questionId: 4,
+        title: 'DP Starter',
+        difficulty: 'Easy',
+        categories: ['dp'],
+    },
+    {
+        questionId: 5,
+        title: 'Array Window Challenge',
+        difficulty: 'Medium',
+        categories: ['arrays'],
+    },
+    {
+        questionId: 6,
+        title: 'DP State Compression',
+        difficulty: 'Hard',
+        categories: ['dp'],
+    },
+];
 
 process.env.INTERNAL_SERVICE_TOKEN = internalServiceToken;
 process.env.USER_SERVICE_URL = 'http://localhost:3001';
+process.env.QUESTION_SERVICE_URL = 'http://localhost:3002';
 
 // Creates a deterministic access token and registers its resolved user payload.
 function createToken(userId: string, role: 'user' | 'admin' = 'user') {
@@ -77,6 +118,31 @@ async function mockAuthResolveFetch(input: URL, init?: RequestInit) {
     });
 }
 
+async function mockQuestionFetch(input: URL, init?: RequestInit) {
+    const url = new URL(input.toString());
+    if (url.pathname !== '/questions') {
+        return new Response('Not found', { status: 404 });
+    }
+
+    const authorization = new Headers(init?.headers).get('Authorization');
+    if (!authorization?.startsWith('Bearer access-')) {
+        return new Response(JSON.stringify({ message: 'Missing or invalid token' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    const difficulty = url.searchParams.get('difficulty');
+    const filteredQuestions = difficulty
+        ? questions.filter((question) => question.difficulty === difficulty)
+        : questions;
+
+    return new Response(JSON.stringify(filteredQuestions), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+
 // Shared HTTP helper for API tests with optional JSON body and Bearer token auth.
 async function request(
     method: 'GET' | 'POST',
@@ -106,6 +172,7 @@ async function request(
 test.before(async () => {
     // Route auth-service lookups to our in-memory mock and boot the app on a random port.
     setAuthServiceFetch(mockAuthResolveFetch);
+    setQuestionServiceFetch(mockQuestionFetch);
     setMatchingRepository(createInMemoryMatchingRepository());
 
     const app = createApp();
@@ -129,6 +196,7 @@ test.after(async () => {
     });
 
     setAuthServiceFetch();
+    setQuestionServiceFetch();
     setMatchingRepository();
 });
 
@@ -178,9 +246,215 @@ test('POST /matching/join queues first user and matches second user with same cr
     );
 
     assert.equal(secondJoin.status, 200);
-    const secondJson = secondJoin.json as { message: string; match: { userIds: string[] } };
+    const secondJson = secondJoin.json as {
+        message: string;
+        match: {
+            userIds: string[];
+            topic: string;
+            difficulty: string;
+            question?: { questionId: number };
+        };
+    };
     assert.equal(secondJson.message, 'Matched successfully');
     assert.deepEqual(secondJson.match.userIds, ['user-a', 'user-b']);
+    assert.equal(secondJson.match.topic, 'arrays');
+    assert.equal(secondJson.match.difficulty, 'easy');
+    assert.equal(secondJson.match.question?.questionId, 1);
+});
+
+test('GET /matching/status/:userId returns match with question when matched', async () => {
+    const tokenA = createToken('user-status-a');
+    const tokenB = createToken('user-status-b');
+
+    const firstJoin = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-status-a',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenA,
+    );
+    assert.equal(firstJoin.status, 202);
+
+    const secondJoin = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-status-b',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenB,
+    );
+    assert.equal(secondJoin.status, 200);
+
+    const status = await request('GET', '/matching/status/user-status-a', undefined, tokenA);
+    assert.equal(status.status, 200);
+
+    const statusJson = status.json as {
+        userId: string;
+        state: string;
+        match?: { matchId: string; question?: { questionId: number } };
+        questions?: Array<{ questionId: number }>;
+    };
+
+    assert.equal(statusJson.userId, 'user-status-a');
+    assert.equal(statusJson.state, 'matched');
+    assert.equal(typeof statusJson.match?.matchId, 'string');
+    assert.equal(statusJson.match?.question?.questionId, 1);
+    assert.equal(statusJson.questions, undefined);
+});
+
+test('capitalized existing match difficulty still hydrates match.question', async () => {
+    const repository = createInMemoryMatchingRepository();
+    setMatchingRepository(repository);
+
+    await repository.saveMatch({
+        matchId: 'match-cap-difficulty',
+        userIds: ['user-cap-a', 'user-cap-b'],
+        topic: 'arrays',
+        difficulty: 'Easy' as unknown as 'easy' | 'medium' | 'hard',
+        createdAt: new Date('2026-04-04T15:00:00.000Z').toISOString(),
+    });
+
+    const status = await getQueueStatus('user-cap-a', Date.now(), 'access-user-cap-a');
+    assert.equal(status.state, 'matched');
+    assert.equal(status.match?.question?.questionId, 1);
+});
+
+test('match with different topics chooses one topic randomly and lower difficulty', async () => {
+    const baseTimeMs = new Date('2026-04-04T12:00:00.000Z').getTime();
+
+    await joinQueue(
+        {
+            userId: 'user-topic-a',
+            topic: 'arrays',
+            difficulty: 'hard',
+        },
+        baseTimeMs,
+        'access-user-topic-a',
+    );
+
+    const secondJoin = await joinQueue(
+        {
+            userId: 'user-topic-b',
+            topic: 'graphs',
+            difficulty: 'easy',
+        },
+        baseTimeMs + 30_000,
+        'access-user-topic-b',
+    );
+
+    assert.equal(secondJoin.state, 'matched');
+    const match = secondJoin.match as MatchResult;
+    assert.ok(match.topic === 'arrays' || match.topic === 'graphs');
+    assert.equal(match.difficulty, 'easy');
+    assert.ok(match.question);
+    assert.equal(match.question?.difficulty, 'Easy');
+    assert.ok(match.question?.categories.includes(match.topic));
+});
+
+test('match with same topic but different difficulty picks lower difficulty', async () => {
+    const baseTimeMs = new Date('2026-04-04T13:00:00.000Z').getTime();
+
+    await joinQueue(
+        {
+            userId: 'user-diff-a',
+            topic: 'dp',
+            difficulty: 'hard',
+        },
+        baseTimeMs,
+        'access-user-diff-a',
+    );
+
+    const secondJoin = await joinQueue(
+        {
+            userId: 'user-diff-b',
+            topic: 'dp',
+            difficulty: 'medium',
+        },
+        baseTimeMs + 15_000,
+        'access-user-diff-b',
+    );
+
+    assert.equal(secondJoin.state, 'matched');
+    const match = secondJoin.match as MatchResult;
+    assert.equal(match.topic, 'dp');
+    assert.equal(match.difficulty, 'medium');
+    assert.equal(match.question?.difficulty, 'Medium');
+    assert.ok(match.question?.categories.includes('dp'));
+});
+
+test('queued same-topic different-difficulty users can match on status poll after expansion window', async () => {
+    const baseTimeMs = new Date('2026-04-04T13:30:00.000Z').getTime();
+
+    const firstJoin = await joinQueue(
+        {
+            userId: 'user-status-rematch-a',
+            topic: 'dp',
+            difficulty: 'hard',
+        },
+        baseTimeMs,
+        'access-user-status-rematch-a',
+    );
+    assert.equal(firstJoin.state, 'queued');
+
+    const secondJoin = await joinQueue(
+        {
+            userId: 'user-status-rematch-b',
+            topic: 'dp',
+            difficulty: 'medium',
+        },
+        baseTimeMs + 10_000,
+        'access-user-status-rematch-b',
+    );
+    assert.equal(secondJoin.state, 'queued');
+
+    const statusAfterExpansion = await getQueueStatus(
+        'user-status-rematch-b',
+        baseTimeMs + 15_000,
+        'access-user-status-rematch-b',
+    );
+
+    assert.equal(statusAfterExpansion.state, 'matched');
+    const match = statusAfterExpansion.match as MatchResult;
+    assert.equal(match.topic, 'dp');
+    assert.equal(match.difficulty, 'medium');
+    assert.ok(match.userIds.includes('user-status-rematch-a'));
+    assert.ok(match.userIds.includes('user-status-rematch-b'));
+});
+
+test('when no question matches resolved topic and lower difficulty, users remain queued', async () => {
+    const baseTimeMs = new Date('2026-04-04T14:00:00.000Z').getTime();
+
+    await joinQueue(
+        {
+            userId: 'user-noq-a',
+            topic: 'linked-list',
+            difficulty: 'hard',
+        },
+        baseTimeMs,
+        'access-user-noq-a',
+    );
+
+    const secondJoin = await joinQueue(
+        {
+            userId: 'user-noq-b',
+            topic: 'linked-list',
+            difficulty: 'easy',
+        },
+        baseTimeMs + 15_000,
+        'access-user-noq-b',
+    );
+
+    assert.equal(secondJoin.state, 'queued');
+
+    const queue = await listQueuedUsers(baseTimeMs + 15_000);
+    const queuedIds = queue.map((entry) => entry.userId);
+    assert.ok(queuedIds.includes('user-noq-a'));
+    assert.ok(queuedIds.includes('user-noq-b'));
 });
 
 test('POST /matching/join rejects invalid difficulty', async () => {
@@ -629,4 +903,82 @@ test('expired queued users are never matched with new joiners', async () => {
     const currentQueue = await listQueuedUsers(baseTimeMs + 60_000);
     assert.equal(currentQueue.length, 1);
     assert.equal(currentQueue[0].userId, 'user-fresh');
+});
+
+test('POST /matching/end successfully ends a match', async () => {
+    const tokenA = createToken('user-end-a');
+    const tokenB = createToken('user-end-b');
+
+    const joined = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-end-a',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenA,
+    );
+    assert.equal(joined.status, 202);
+
+    const matched = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-end-b',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenB,
+    );
+    assert.equal(matched.status, 200);
+
+    const matchedJson = matched.json as { match: { matchId: string } };
+    const matchId = matchedJson.match.matchId;
+
+    const ended = await request(
+        'POST',
+        '/matching/end',
+        {
+            matchId,
+        },
+        tokenA,
+    );
+    assert.equal(ended.status, 200);
+    assert.deepEqual(ended.json, {
+        message: 'Match ended successfully',
+    });
+
+    const status = await getQueueStatus('user-end-a');
+    assert.equal(status.state, 'matched');
+    assert.equal(typeof (status.match as any)?.endedAt, 'string');
+});
+
+test('POST /matching/end returns 404 for non-existent match', async () => {
+    const token = createToken('user-end-notfound');
+
+    const result = await request(
+        'POST',
+        '/matching/end',
+        {
+            matchId: 'non-existent-match-id',
+        },
+        token,
+    );
+
+    assert.equal(result.status, 404);
+    assert.deepEqual(result.json, {
+        message: 'Match not found',
+    });
+});
+
+test('POST /matching/end requires matchId', async () => {
+    const token = createToken('user-end-noid');
+
+    const result = await request('POST', '/matching/end', {}, token);
+
+    assert.equal(result.status, 400);
+    assert.deepEqual(result.json, {
+        message: 'matchId is required',
+    });
 });
