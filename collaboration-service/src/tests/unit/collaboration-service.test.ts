@@ -43,7 +43,7 @@ describe('createSession', () => {
         const saveMock = jest.fn().mockResolvedValue(mockSession({ roomId: 'mocked-room-id' }));
         mockedSession.mockImplementation(() => ({ save: saveMock }) as any);
 
-        const result = await createSession('roomId',['user1', 'user2'], 'q1');
+        const result = await createSession('roomId', ['user1', 'user2'], 'q1');
 
         expect(saveMock).toHaveBeenCalled();
         expect(result.roomId).toBe('mocked-room-id');

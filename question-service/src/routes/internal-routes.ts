@@ -7,7 +7,10 @@ export const internalRouter = Router();
 
 function requireInternalToken(req: Request, res: Response, next: NextFunction) {
     const token = req.headers['x-internal-service-token'];
-    if (!config.userService.internalServiceToken || token !== config.userService.internalServiceToken) {
+    if (
+        !config.userService.internalServiceToken ||
+        token !== config.userService.internalServiceToken
+    ) {
         res.status(401).json({ message: 'Unauthorized' });
         return;
     }
