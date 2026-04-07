@@ -426,7 +426,7 @@ const Collab = () => {
                     <div className="col-3 border-end p-3 overflow-auto" style={{ height: '100%' }}>
                         <div className="d-flex gap-2 mb-2 flex-wrap">
                             <span
-                                className={`badge ${(question?.difficulty) === 'Easy' ? 'bg-success' : (question?.difficulty) === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
+                                className={`badge ${question?.difficulty === 'Easy' ? 'bg-success' : question?.difficulty === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
                             >
                                 {question?.difficulty}
                             </span>
@@ -437,9 +437,7 @@ const Collab = () => {
                             ))}
                         </div>
                         <h5>{question?.title}</h5>
-                        <p style={{ fontSize: '0.9rem' }}>
-                            {question?.description}
-                        </p>
+                        <p style={{ fontSize: '0.9rem' }}>{question?.description}</p>
                         {question?.examples && question.examples.length > 0 && (
                             <div className="mt-3">
                                 <strong style={{ fontSize: '0.9rem' }}>Examples</strong>
