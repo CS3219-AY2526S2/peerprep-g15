@@ -134,7 +134,13 @@ export async function submitCode(roomId: string, code: string, language: string)
         // No test cases defined — fall back to a plain run
         const result = await executeCode(roomId, code, language);
         const passed = result.status === 'Accepted' && !result.stderr;
-        return { passed, results: [], stdout: result.stdout, stderr: result.stderr, status: result.status };
+        return {
+            passed,
+            results: [],
+            stdout: result.stdout,
+            stderr: result.stderr,
+            status: result.status,
+        };
     }
 
     const results = await Promise.all(

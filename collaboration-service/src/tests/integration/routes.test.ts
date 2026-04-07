@@ -42,7 +42,9 @@ describe('POST /collab/create', () => {
     });
 
     it('should return 400 if fields are missing', async () => {
-        const res = await request(app).post('/collab/create').send({ roomId: 'room1', userIds: ['user1'] }); // missing questionId
+        const res = await request(app)
+            .post('/collab/create')
+            .send({ roomId: 'room1', userIds: ['user1'] }); // missing questionId
 
         expect(res.status).toBe(400);
         expect(res.body.message).toBe('Missing required fields');
@@ -53,7 +55,7 @@ describe('POST /collab/create', () => {
 
         const res = await request(app)
             .post('/collab/create')
-            .send({roomId: 'room1', userIds: ['user1', 'user2'], questionId: 'q1' });
+            .send({ roomId: 'room1', userIds: ['user1', 'user2'], questionId: 'q1' });
 
         expect(res.status).toBe(500);
         expect(res.body.message).toBe('Internal server error');

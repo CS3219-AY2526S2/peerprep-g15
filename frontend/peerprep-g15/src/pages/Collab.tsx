@@ -465,9 +465,7 @@ const Collab = () => {
                                             <code>{ex.output}</code>
                                         </div>
                                         {ex.explanation && (
-                                            <div className="text-muted mt-1">
-                                                {ex.explanation}
-                                            </div>
+                                            <div className="text-muted mt-1">{ex.explanation}</div>
                                         )}
                                     </div>
                                 ))}
