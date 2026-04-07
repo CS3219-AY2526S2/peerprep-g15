@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "tsx watch src/server.ts",
         "build": "tsc -p tsconfig.json",
-        "start": "ts-node src/server.ts",
+        "start": "node dist/server.js",
         "test": "jest --runInBand",
         "test:watch": "jest --watch"
     },
