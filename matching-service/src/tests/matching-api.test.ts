@@ -908,6 +908,7 @@ test('expired queued users are never matched with new joiners', async () => {
 test('POST /matching/end successfully ends a match', async () => {
     const tokenA = createToken('user-end-a');
     const tokenB = createToken('user-end-b');
+    const tokenC = createToken('user-end-c');
 
     const joined = await request(
         'POST',
@@ -950,8 +951,35 @@ test('POST /matching/end successfully ends a match', async () => {
     });
 
     const status = await getQueueStatus('user-end-a');
-    assert.equal(status.state, 'matched');
-    assert.equal(typeof (status.match as any)?.endedAt, 'string');
+    assert.equal(status.state, 'not_found');
+    assert.equal(status.match, undefined);
+
+    const rejoined = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-end-a',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenA,
+    );
+    assert.equal(rejoined.status, 202);
+
+    const joinedByC = await request(
+        'POST',
+        '/matching/join',
+        {
+            userId: 'user-end-c',
+            topic: 'arrays',
+            difficulty: 'easy',
+        },
+        tokenC,
+    );
+    assert.equal(joinedByC.status, 200);
+
+    const matchedAgain = joinedByC.json as { match: { userIds: string[] } };
+    assert.deepEqual(new Set(matchedAgain.match.userIds), new Set(['user-end-a', 'user-end-c']));
 });
 
 test('POST /matching/end returns 404 for non-existent match', async () => {

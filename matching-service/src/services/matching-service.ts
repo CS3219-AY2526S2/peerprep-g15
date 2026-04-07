@@ -61,7 +61,7 @@ class MongoMatchingRepository implements MatchingRepository {
     }
 
     async getMatchByUserId(userId: string) {
-        const document = await MatchModel.findOne({ userIds: userId }).lean();
+        const document = await MatchModel.findOne({ userIds: userId, endedAt: { $exists: false } }).lean();
         return document ? matchDocumentToResult(document) : null;
     }
 
@@ -97,11 +97,7 @@ class MongoMatchingRepository implements MatchingRepository {
     }
 
     async endMatch(matchId: string) {
-        const result = await MatchModel.findOneAndUpdate(
-            { matchId },
-            { endedAt: new Date() },
-            { new: true },
-        );
+        const result = await MatchModel.findOneAndDelete({ matchId }).lean();
         return result !== null;
     }
 
@@ -172,7 +168,8 @@ class InMemoryMatchingRepository implements MatchingRepository {
     }
 
     async getMatchByUserId(userId: string) {
-        return this.matchByUserId.get(userId) ?? null;
+        const match = this.matchByUserId.get(userId);
+        return match && !match.endedAt ? match : null;
     }
 
     async getQueuedUserEntry(userId: string) {
@@ -225,8 +222,7 @@ class InMemoryMatchingRepository implements MatchingRepository {
         let found = false;
         for (const [userId, match] of this.matchByUserId.entries()) {
             if (match.matchId === matchId) {
-                const updatedMatch = { ...match, endedAt: new Date().toISOString() };
-                this.matchByUserId.set(userId, updatedMatch);
+                this.matchByUserId.delete(userId);
                 found = true;
             }
         }
@@ -564,15 +560,15 @@ export async function leaveQueue(userId: string) {
     return true;
 }
 
-// Returns matched/queued/not_found state for a given user.
+// Returns matched/queued/timed_out/not_found state for a given user.
 export async function getQueueStatus(
     userId: string,
     nowMs = Date.now(),
     accessToken?: string,
 ): Promise<QueueStatus> {
-    const match = await repository.getMatchByUserId(userId);
-    if (match) {
-        const hydratedMatch = await ensureMatchHasQuestion(match, accessToken);
+    const activeMatch = await repository.getMatchByUserId(userId);
+    if (activeMatch) {
+        const hydratedMatch = await ensureMatchHasQuestion(activeMatch, accessToken);
         return {
             userId,
             state: 'matched',

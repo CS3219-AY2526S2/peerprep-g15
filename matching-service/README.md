@@ -142,7 +142,7 @@ Responses:
 
 `POST /matching/end` - End a match.
 
-Use this when the match session is complete and should be marked as ended.
+Use this when the match session is complete and should be marked as ended. After this call, the status for both users in the match becomes `not_found` because they are no longer queued or actively matched.
 
 Headers:
 
