@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, Response as ExpressResponse } from 'express';
 import {
     requireAuth,
     requireRole,
@@ -10,7 +10,7 @@ import { config } from '../../../config/env';
 
 describe('auth-middleware', () => {
     const next = vi.fn() as NextFunction;
-    const res = {} as Response;
+    const res = {} as ExpressResponse;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -75,7 +75,7 @@ describe('auth-middleware', () => {
         vi.mocked(fetch).mockResolvedValue({
             ok: false,
             json: vi.fn().mockResolvedValue({ message: 'Invalid token' }),
-        } as unknown as Response);
+        } as unknown as any);
 
         await requireAuth(req, res, next);
 
@@ -107,7 +107,7 @@ describe('auth-middleware', () => {
         vi.mocked(fetch).mockResolvedValue({
             ok: true,
             json: vi.fn().mockResolvedValue({ nope: true }),
-        } as unknown as Response);
+        } as unknown as any);
 
         await requireAuth(req, res, next);
 
@@ -154,7 +154,7 @@ describe('auth-middleware', () => {
         vi.mocked(fetch).mockResolvedValue({
             ok: true,
             json: vi.fn().mockResolvedValue({ user: resolvedUser }),
-        } as unknown as Response);
+        } as unknown as any);
 
         await requireAuth(req, res, next);
 
