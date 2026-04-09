@@ -9,7 +9,9 @@ import {
     executeCode,
     submitCode,
     addMessageToSession,
+    TestCase,
 } from './services/collaboration-service';
+
 
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 const languageTimers = new Map<string, NodeJS.Timeout>();
@@ -31,6 +33,13 @@ export function initSocket(server: http.Server) {
             socket.data.username = username;
 
             socket.to(roomId).emit('partner-info', { userId, username });
+
+            const socketsInRoom = await io.in(roomId).fetchSockets();
+            for (const s of socketsInRoom) {
+                if (s.id !== socket.id && s.data.username) {
+                    socket.emit('partner-info', { userId: s.data.userId, username: s.data.username });
+                }
+            }
 
             // cancel disconnect timer if user reconnected
             if (disconnectTimers.has(userId)) {
@@ -122,10 +131,10 @@ export function initSocket(server: http.Server) {
             }
         });
 
-        // user runs code
+        // user runs code with non-hidden test cases
         socket.on(
             'run-code',
-            async (roomId: string, userId: string, code: string, language: string) => {
+            async (roomId: string, userId: string, code: string, language: string, testCases: TestCase[]) => {
                 const session = await getSession(roomId);
                 if (!session) return;
                 if (session.status !== 'active') return;
@@ -137,7 +146,9 @@ export function initSocket(server: http.Server) {
                     runCodeTimers.delete(roomId);
                     try {
                         io.to(roomId).emit('code-executing');
-                        const result = await executeCode(roomId, code, language);
+                        console.log('Executing code for room:', roomId);
+                        const result = await submitCode(roomId, code, language, testCases);
+                        console.log('Code execution result:', result);
                         io.to(roomId).emit('code-result', result);
                     } catch (err) {
                         io.to(roomId).emit('code-error', { message: 'Execution failed' });
@@ -147,16 +158,17 @@ export function initSocket(server: http.Server) {
             },
         );
 
+        // user submits code
         socket.on(
             'submit-code',
-            async (roomId: string, userId: string, code: string, language: string) => {
+            async (roomId: string, userId: string, code: string, language: string, testCases: TestCase[]) => {
                 const session = await getSession(roomId);
                 if (!session || session.status !== 'active') return;
                 if (!session.userIds.includes(userId)) return;
 
                 try {
                     io.to(roomId).emit('code-executing');
-                    const result = await submitCode(roomId, code, language);
+                    const result = await submitCode(roomId, code, language, testCases);
                     io.to(roomId).emit('submit-result', result);
                 } catch (err) {
                     io.to(roomId).emit('code-error', { message: 'Execution failed' });

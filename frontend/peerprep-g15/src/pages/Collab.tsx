@@ -16,8 +16,17 @@ type Question = {
     sourceUrl?: string;
     supportedLanguages: string[];
     examples: { input: string; output: string; explanation?: string }[];
+    testCases: TestCase[];
     starterCode: Record<string, string>;
 };
+
+type TestCase = {
+    input: Object;
+    expectedOutput: Object;
+    isHidden: boolean;
+    explanation: string;
+    weight: number;
+}
 
 type Message = {
     senderId: string;
@@ -132,6 +141,7 @@ const Collab = () => {
         s.on('code-result', (result: any) => {
             setIsExecuting(false);
             setCodeResult(result);
+            console.log('Code execution result:', result);
         });
 
         s.on('submit-result', (result: any) => {
@@ -251,12 +261,17 @@ const Collab = () => {
 
     const handleRunCode = () => {
         if (!socket) return;
-        socket.emit('run-code', roomId, userId, code, selectedLanguage);
+
+        console.log('TestCases for question:', question?.testCases);
+        const filteredTestCases = question?.testCases.filter((tc) => !tc.isHidden) ?? {};
+        console.log('Running code with test cases:', filteredTestCases);
+
+        socket.emit('run-code', roomId, userId, code, selectedLanguage, filteredTestCases);
     };
 
     const handleSubmit = () => {
         if (!socket) return;
-        socket.emit('submit-code', roomId, userId, code, selectedLanguage);
+        socket.emit('submit-code', roomId, userId, code, selectedLanguage, question?.testCases ?? []);
         setIsExecuting(true);
     };
 
@@ -274,14 +289,14 @@ const Collab = () => {
     };
 
     const handleLeave = async () => {
-        // try {
-        //     await matchAxios.post('/matching/end', { matchId: roomId });
-        //     console.log('Match ended');
-
+        try {
+            await matchAxios.post('/matching/end', { matchId: roomId });
+            console.log('Match ended');
+        } catch (err: any) {
+            console.error('Failed to end match:', err.response?.data || err.message);
+        }
         socket?.emit('leave-session', roomId, userId);
-        // } catch (err: any) {
-        //     console.error('Failed to end match:', err.response?.data || err.message);
-        // }
+        window.location.href = '/home';
     };
 
     // Language selection overlay
@@ -289,73 +304,119 @@ const Collab = () => {
         return (
             <>
                 <NavBar name={name} />
-                <div
-                    className="d-flex justify-content-center align-items-center"
-                    style={{ minHeight: '80vh' }}
-                >
-                    <div className="card shadow-lg" style={{ width: '450px' }}>
-                        <div className="card-body text-center">
-                            <h3 className="card-title mb-3">Select Language</h3>
+                <div className="container-fluid" style={{ height: 'calc(100vh - 56px)' }}>
+                    <div className="row g-0" style={{ height: '100%' }}>
+                        <div
+                            className="d-flex justify-content-center align-items-center"
+                            style={{ minHeight: '80vh', marginRight: 'min(25%, 350px)' }}
+                        >
+                            <div className="card shadow-lg" style={{ width: '450px' }}>
+                                <div className="card-body text-center">
+                                    <h3 className="card-title mb-3">Select Language</h3>
 
-                            {!partnerJoined ? (
-                                <>
-                                    <div
-                                        className="spinner-border text-primary mb-3"
-                                        role="status"
-                                    />
-                                    <p className="text-muted">Waiting for partner to join...</p>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="mb-3">
-                                        <span className="badge bg-warning text-dark fs-5">
-                                            {timer}s
-                                        </span>
-                                    </div>
-                                    <p className="text-muted">
-                                        Both users must agree on a language
-                                    </p>
+                                    {!partnerJoined ? (
+                                        <>
+                                            <div
+                                                className="spinner-border text-primary mb-3"
+                                                role="status"
+                                            />
+                                            <p className="text-muted">Waiting for partner to join...</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="mb-3">
+                                                <span className="badge bg-warning text-dark fs-5">
+                                                    {timer}s
+                                                </span>
+                                            </div>
+                                            <p className="text-muted">
+                                                Both users must agree on a language
+                                            </p>
 
-                                    <div className="d-flex flex-column gap-2 mb-4">
-                                        {(
-                                            question?.supportedLanguages ?? [
-                                                'python',
-                                                'javascript',
-                                                'java',
-                                                'cpp',
-                                            ]
-                                        ).map((lang) => (
+                                            <div className="d-flex flex-column gap-2 mb-4">
+                                                {(
+                                                    question?.supportedLanguages ?? [
+                                                        'python',
+                                                        'javascript',
+                                                        'java',
+                                                        'cpp',
+                                                    ]
+                                                ).map((lang) => (
+                                                    <button
+                                                        key={lang}
+                                                        className={`btn ${selectedLanguage === lang ? 'btn-primary' : 'btn-outline-primary'}`}
+                                                        onClick={() => setSelectedLanguage(lang)}
+                                                        disabled={lockedIn}
+                                                    >
+                                                        {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                                                    </button>
+                                                ))}
+                                            </div>
+
                                             <button
-                                                key={lang}
-                                                className={`btn ${selectedLanguage === lang ? 'btn-primary' : 'btn-outline-primary'}`}
-                                                onClick={() => setSelectedLanguage(lang)}
-                                                disabled={lockedIn}
+                                                className="btn btn-success w-100 mb-2"
+                                                onClick={handleLockIn}
+                                                disabled={!selectedLanguage || lockedIn}
                                             >
-                                                {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                                                {lockedIn ? 'Locked In!' : 'Lock In'}
                                             </button>
-                                        ))}
+
+                                            {lockedIn && !partnerLockedIn && (
+                                                <p className="text-muted mt-2">
+                                                    Waiting for partner to lock in...
+                                                </p>
+                                            )}
+                                            {partnerLockedIn && !lockedIn && (
+                                                <p className="text-info mt-2">
+                                                    Your partner has locked in!
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="col-3 d-flex flex-column border-start position-fixed end-0 top-0 bg-white" style={{ height: 'calc(100vh - 56px)', marginTop: '56px', width: '25%', zIndex: 100, marginLeft: '8px'}}>
+                                <div className="p-2 border-bottom bg-light">
+                                    <strong>Chat</strong>
+                                </div>
+                                <div
+                                    className="flex-grow-1 overflow-auto p-2"
+                                    style={{ fontSize: '0.85rem' }}
+                                >
+                                    {messages.map((msg, i) => (
+                                        <div
+                                            key={i}
+                                            className={`mb-2 ${msg.senderId === userId ? 'text-end' : ''}`}
+                                        >
+                                            <small className="text-muted d-block">{msg.username}</small>
+                                            <span
+                                                className={`d-inline-block px-2 py-1 rounded ${msg.senderId === userId ? 'bg-primary text-white' : 'bg-light border'}`}
+                                            >
+                                                {msg.content}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    <div ref={chatEndRef} />
+                                </div>
+                                <div className="border-top p-2">
+                                    <div className="input-group">
+                                        <input
+                                            type="text"
+                                            className="form-control form-control-sm"
+                                            placeholder="Type a message..."
+                                            value={chatInput}
+                                            onChange={(e) => setChatInput(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                        />
+                                        <button
+                                            className="btn btn-sm btn-primary"
+                                            onClick={handleSendMessage}
+                                        >
+                                            Send
+                                        </button>
                                     </div>
-
-                                    <button
-                                        className="btn btn-success w-100 mb-2"
-                                        onClick={handleLockIn}
-                                        disabled={!selectedLanguage || lockedIn}
-                                    >
-                                        {lockedIn ? 'Locked In!' : 'Lock In'}
-                                    </button>
-
-                                    {lockedIn && !partnerLockedIn && (
-                                        <p className="text-muted mt-2">
-                                            Waiting for partner to lock in...
-                                        </p>
-                                    )}
-                                    {partnerLockedIn && !lockedIn && (
-                                        <p className="text-info mt-2">
-                                            Your partner has locked in!
-                                        </p>
-                                    )}
-                                </>
-                            )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -386,9 +447,11 @@ const Collab = () => {
                         <div className="card-body">
                             <h3 className="text-danger">{title}</h3>
                             <p className="text-muted">{msg}</p>
-                            <a href="/home" className="btn btn-primary">
+                            <button 
+                            className="btn btn-primary"
+                            onClick={handleLeave}>
                                 Back to Home
-                            </a>
+                            </button>
                         </div>
                     </div>
                 </div>

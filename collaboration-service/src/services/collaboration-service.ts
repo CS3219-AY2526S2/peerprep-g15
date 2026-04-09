@@ -3,29 +3,7 @@ import { LANGUAGE_MAP } from '../config/constants';
 import { config } from '../config/env';
 // @ts-ignore
 import axios from 'axios';
-
-interface QuestionExample {
-    input: string;
-    output: string;
-    explanation?: string;
-}
-
-interface Question {
-    questionId: number;
-    examples: QuestionExample[];
-    starterCode: Record<string, string>;
-    supportedLanguages: string[];
-}
-
-async function fetchQuestion(questionId: string): Promise<Question> {
-    const response = await axios.get(
-        `${config.questionService.baseUrl}/internal/questions/${questionId}`,
-        {
-            headers: { 'X-Internal-Service-Token': config.questionService.internalServiceToken },
-        },
-    );
-    return response.data;
-}
+import Test from 'supertest/lib/test';
 
 interface Judge0Response {
     stdout: string;
@@ -35,6 +13,14 @@ interface Judge0Response {
     };
     time: string;
     memory: number;
+}
+
+export interface TestCase {
+    input: Object;
+    expectedOutput: Object;
+    isHidden: boolean;
+    explanation: string;
+    weight: number;
 }
 
 // create a new session when two users are matched
@@ -118,7 +104,7 @@ export async function executeCode(roomId: string, code: string, language: string
     };
 }
 
-export async function submitCode(roomId: string, code: string, language: string) {
+export async function submitCode(roomId: string, code: string, language: string, testCases: TestCase[]) {
     const session = await getSession(roomId);
     if (!session) throw new Error('Session not found');
     if (session.status !== 'active') throw new Error('Session is not active');
@@ -127,8 +113,6 @@ export async function submitCode(roomId: string, code: string, language: string)
     if (!languageId) throw new Error('Unsupported language');
 
     if (!session.questionId) throw new Error('Session has no questionId');
-    const question = await fetchQuestion(session.questionId);
-    const testCases = question.examples ?? [];
 
     if (testCases.length === 0) {
         // No test cases defined — fall back to a plain run
@@ -151,7 +135,7 @@ export async function submitCode(roomId: string, code: string, language: string)
                 { headers: { 'Content-Type': 'application/json' } },
             );
             const actual = (response.data.stdout ?? '').trim();
-            const expected = tc.output.trim();
+            const expected = tc.expectedOutput;
             return {
                 input: tc.input,
                 expected,
