@@ -8,6 +8,9 @@ import * as Y from 'yjs';
 import { MonacoBinding } from 'y-monaco';
 import Editor from '@monaco-editor/react';
 import OutputPanel from '../components/CodeOutput';
+import { createHighlighter } from 'shiki';
+import { shikiToMonaco } from '@shikijs/monaco';
+import { loader } from '@monaco-editor/react';
 
 const COLLAB_URL = 'http://localhost:3004';
 
@@ -48,6 +51,15 @@ type SessionState = {
     status: string;
     messages: Message[];
 };
+
+loader.init().then(async (monaco) => {
+    const highlighter = await createHighlighter({
+        themes: ['github-dark', 'github-light'],
+        langs: ['python', 'javascript', 'java', 'cpp'],
+    });
+
+    shikiToMonaco(highlighter, monaco);
+});
 
 const Collab = () => {
     // const name = localStorage.getItem('name') || 'Admin';
@@ -634,6 +646,7 @@ const Collab = () => {
                     <div className="col-6 d-flex flex-column border-end" style={{ height: '100%' }}>
                         <div style={{ flex: 1, minHeight: 0 }}>
                             <Editor
+                                theme="github-light"
                                 height="100%"
                                 language={selectedLanguage} // 'python', 'javascript', 'java', or 'cpp'
                                 onMount={handleEditorMount}
