@@ -21,6 +21,7 @@ type Question = {
     description: string;
     categories: string[];
     difficulty: string;
+    constraints: string[];
     sourceUrl?: string;
     supportedLanguages: string[];
     examples: { input: string; output: string; explanation?: string }[];
@@ -46,13 +47,23 @@ type SessionState = {
     messages: Message[];
 };
 
+let shikiReady = false;
+let shikiMonaco: any = null;
+const shikiReadyCallbacks: (() => void)[] = [];
+
+const highlighterPromise = createHighlighter({
+    themes: ['github-dark', 'github-light'],
+    langs: ['python', 'javascript', 'java', 'cpp'],
+});
+
 loader.init().then(async (monaco) => {
-    const highlighter = await createHighlighter({
-        themes: ['github-dark', 'github-light'],
-        langs: ['python', 'javascript', 'java', 'cpp'],
-    });
+    const highlighter = await highlighterPromise
 
     shikiToMonaco(highlighter, monaco);
+    monaco.editor.setTheme('github-light');
+    shikiReady = true;
+    shikiReadyCallbacks.forEach((cb) => cb());
+    shikiReadyCallbacks.length = 0;
 });
 
 const Collab = () => {
@@ -90,18 +101,9 @@ const Collab = () => {
     const [submitTimer, setSubmitTimer] = useState(10);
     const [question, setQuestion] = useState<Question | null>(null);
     const [initialSyncDone, setInitialSyncDone] = useState(false);
-    const replaceEditorText = (value: string) => {
-        const current = ytext.current.toString();
+    const monacoRef = useRef<any>(null);
+    const questionRef = useRef<Question | null>(null);
 
-        ydoc.current.transact(() => {
-            if (current.length > 0) {
-                ytext.current.delete(0, current.length);
-            }
-            if (value.length > 0) {
-                ytext.current.insert(0, value);
-            }
-        });
-    };
     const getExecutionSpec = (): ExecutionSpec => {
         return question?.executionSpec ?? { kind: 'stdin', comparator: 'string' };
     };
@@ -133,7 +135,12 @@ const Collab = () => {
             if (session?.questionId) {
                 questionAxios
                     .get<Question>(`/questions/${session.questionId}`)
-                    .then((res) => setQuestion(res.data))
+                    .then((res) => {
+                        console.log('constraints:', res.data.constraints);
+                        console.log('full question:', res.data);
+                        setQuestion(res.data);
+                        questionRef.current = res.data;
+                    })
                     .catch(() => {});
             }
         });
@@ -173,10 +180,31 @@ const Collab = () => {
         });
 
         s.on('session-started', (data: { language: string; insertStarter: boolean }) => {
-            starterInserted.current = false;
-            setInitialSyncDone(false);
+            starterInserted.current = true;
+            setInitialSyncDone(true);
             setSessionStatus('active');
             setSelectedLanguage(data.language);
+
+             // Only the designated user inserts — do it here, not in useEffect
+            if (data.insertStarter) {
+                // Wait for question to be available
+                const tryInsert = (attempts = 0) => {
+                    const q = questionRef.current;
+                    const lang = data.language;
+                    if (!q) {
+                        if (attempts < 20) setTimeout(() => tryInsert(attempts + 1), 100);
+                        return;
+                    }
+                    const starter = q.starterCode?.[lang];
+                    if (!starter) return;
+                    const current = ytext.current.toString().trim();
+                    if (current.length > 0) return; // already has content
+                    ydoc.current.transact(() => {
+                        ytext.current.insert(0, starter);
+                    });
+                };
+                tryInsert();
+            }
         });
 
         s.on('user-locked-in', async () => {
@@ -303,40 +331,6 @@ const Collab = () => {
         }
     }, [submitResult]);
 
-    // Pre-fill starter code — only the designated user inserts to avoid double insertion
-    useEffect(() => {
-        if (
-            sessionStatus !== 'active' ||
-            !initialSyncDone ||
-            !question ||
-            !selectedLanguage ||
-            starterInserted.current
-        ) {
-            return;
-        }
-
-        const currentEditorText = ytext.current.toString();
-        const trimmedEditorText = currentEditorText.trim();
-        const persistedCode = (_session?.code ?? '').trim();
-
-        if (trimmedEditorText.length > 0) {
-            starterInserted.current = true;
-            return;
-        }
-
-        if (persistedCode.length > 0) {
-            replaceEditorText(_session!.code);
-            starterInserted.current = true;
-            return;
-        }
-
-        const starter = question.starterCode?.[selectedLanguage];
-        if (!starter) return;
-
-        replaceEditorText(starter);
-        starterInserted.current = true;
-    }, [sessionStatus, initialSyncDone, question, selectedLanguage, _session]);
-
     useEffect(() => {
         if (sessionStatus !== 'active') return;
         if (initialSyncDone) return;
@@ -347,6 +341,19 @@ const Collab = () => {
 
         return () => clearTimeout(timeout);
     }, [sessionStatus, initialSyncDone]);
+
+    // Loading theme
+    useEffect(() => {
+        const apply = () => {
+            shikiMonaco?.editor.setTheme('github-light');
+        };
+
+        if (shikiReady) {
+            apply();
+            return;
+        }
+        shikiReadyCallbacks.push(apply);
+    }, []);
 
     const handleEditorWillMount = (monaco: any) => {
         // --- 1. JavaScript & TypeScript (High Robustness) ---
@@ -434,7 +441,8 @@ const Collab = () => {
         window.location.href = '/home';
     };
 
-    const handleEditorMount = (editor: any) => {
+    const handleEditorMount = (editor: any, monaco: any) => {
+        monacoRef.current = monaco;
         bindingRef.current = new MonacoBinding(
             ytext.current,
             editor.getModel()!,
@@ -694,6 +702,22 @@ const Collab = () => {
                                         )}
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                        {question?.constraints && question.constraints.length > 0 && (
+                            <div className="mt-3">
+                                <strong style={{ fontSize: '0.9rem' }}>Constraints</strong>
+                                <div className = "big-light border rounded p-2 mt-2" style={{ fontSize: '0.8rem' }}>
+                                {question.constraints.map((constraint, i) => (
+                                    <div
+                                        key={i}
+                                        className={i > 0 ? 'mt-1' : ''}
+                                        style={{ fontSize: '0.8rem' }}
+                                    >
+                                        <code>{i + 1}: {constraint}</code>
+                                    </div>
+                                ))}
+                                </div>
                             </div>
                         )}
                     </div>

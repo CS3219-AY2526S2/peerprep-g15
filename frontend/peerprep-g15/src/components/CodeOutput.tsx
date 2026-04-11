@@ -41,7 +41,14 @@ function formatValue(value: unknown): string {
     if (typeof value === 'string') return value;
 
     try {
-        return JSON.stringify(value, null, 2);
+        // If object has only one key, show just the value
+        if (typeof value === 'object' && !Array.isArray(value)) {
+            const keys = Object.keys(value as object);
+            if (keys.length === 1) {
+                return JSON.stringify((value as any)[keys[0]]);
+            }
+        }
+        return JSON.stringify(value);
     } catch {
         return String(value);
     }
@@ -206,14 +213,14 @@ const OutputPanel = ({
 
                         <div className="col-12">
                             <div className="fw-semibold mb-2">YOUR OUTPUT</div>
-                            <div style={boxStyle('#fff5f5')}>
+                            <div style={boxStyle(active.passed ? '#edf7ed' : '#fff5f5')}>
                                 <PreBlock value={renderOutput(active)} />
                             </div>
                         </div>
 
                         <div className="col-12">
                             <div className="fw-semibold mb-2">STATUS</div>
-                            <div style={boxStyle('#f8f9fa')}>
+                            <div style={boxStyle(active.passed ? '#edf7ed' : '#fff5f5')}>
                                 <PreBlock value={active.status} />
                             </div>
                         </div>
