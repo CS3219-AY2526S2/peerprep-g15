@@ -488,7 +488,11 @@ test('edge case: in-memory queue state is lost after reset (restart simulation)'
 
     await resetMatchingState();
 
-    const statusAfterReset = await getQueueStatus('user-restart', Date.now() + 1, 'access-user-restart');
+    const statusAfterReset = await getQueueStatus(
+        'user-restart',
+        Date.now() + 1,
+        'access-user-restart',
+    );
     assert.equal(statusAfterReset.state, 'not_found');
 });
 

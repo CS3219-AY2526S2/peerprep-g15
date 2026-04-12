@@ -142,9 +142,7 @@ async function createUserSession(label: string, usernamePrefix: string): Promise
 
     if (!refreshResponse.ok) {
         const errorText = await refreshResponse.text();
-        throw new Error(
-            buildAuthFailureMessage(user.username, 'refresh', errorText),
-        );
+        throw new Error(buildAuthFailureMessage(user.username, 'refresh', errorText));
     }
 
     const refreshBody = (await refreshResponse.json()) as RefreshResponse;
@@ -188,7 +186,12 @@ async function runManualTest() {
         console.log('Body:', firstJoin.body);
 
         printStep('Step 4: Check User 1 Status');
-        const firstStatus = await request(BASE_URL, 'GET', `/status/${user1.userId}`, user1.accessToken);
+        const firstStatus = await request(
+            BASE_URL,
+            'GET',
+            `/status/${user1.userId}`,
+            user1.accessToken,
+        );
         console.log('Status:', firstStatus.status);
         console.log('Body:', firstStatus.body);
 
