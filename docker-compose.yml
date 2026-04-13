@@ -1,0 +1,87 @@
+version: '3.9'
+
+services:
+    user-service:
+        build:
+            context: ./user-service
+        ports:
+            - '3001:3001'
+        env_file:
+            - ./user-service/.env.docker
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3001/health']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+
+    question-service:
+        build:
+            context: ./question-service
+        ports:
+            - '3002:3002'
+        env_file:
+            - ./question-service/.env.docker
+        depends_on:
+            user-service:
+                condition: service_healthy
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3002/health']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+
+    matching-service:
+        build:
+            context: ./matching-service
+        ports:
+            - '3003:3003'
+        env_file:
+            - ./matching-service/.env.docker
+        depends_on:
+            user-service:
+                condition: service_healthy
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3003/matching/health']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+
+    collaboration-service:
+        build:
+            context: ./collaboration-service
+        ports:
+            - '3004:3004'
+        env_file:
+            - ./collaboration-service/.env.docker
+        depends_on:
+            user-service:
+                condition: service_healthy
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3004/health']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+
+    frontend:
+        build:
+            context: ./frontend/peerprep-g15
+        ports:
+            - '5173:80'
+        depends_on:
+            user-service:
+                condition: service_healthy
+            question-service:
+                condition: service_healthy
+            matching-service:
+                condition: service_healthy
+            collaboration-service:
+                condition: service_healthy
+        restart: unless-stopped

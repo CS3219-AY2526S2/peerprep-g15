@@ -1,0 +1,115 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+jobs:
+    formatting:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: package-lock.json
+
+            - run: npm ci
+            - run: npm run format:check
+
+    user-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: user-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: user-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    question-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: question-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: question-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    collaboration-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: collaboration-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: collaboration-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    matching-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: matching-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: matching-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    frontend:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: frontend/peerprep-g15
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: frontend/peerprep-g15/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
