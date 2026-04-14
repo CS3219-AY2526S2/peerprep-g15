@@ -62,11 +62,6 @@ const NavBar = ({ name }: { name: string }) => {
                     <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                         <li>
                             <a className="dropdown-item" href="#">
-                                Profile
-                            </a>
-                        </li>
-                        <li>
-                            <a className="dropdown-item" href="#">
                                 Settings
                             </a>
                         </li>

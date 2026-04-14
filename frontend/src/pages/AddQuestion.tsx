@@ -4,7 +4,7 @@ import { HouseFill, FileTextFill, PeopleFill, GearFill } from 'react-bootstrap-i
 import { useNavigate } from 'react-router';
 import NavBar from '../components/NavBar.tsx';
 import questionAxios from '../questionAxios.ts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const AddQuestion = () => {
     const navigate = useNavigate();
@@ -18,6 +18,38 @@ const AddQuestion = () => {
     const [sourceUrl, setSourceUrl] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const [loadingId, setLoadingId] = useState(true);
+
+    useEffect(() => {
+        const fetchNextQuestionId = async () => {
+            try {
+                setLoadingId(true);
+
+                const response = await questionAxios.get('/questions');
+                const questions = response.data;
+
+                const usedIds = new Set(
+                    questions
+                        .map((q: any) => q.questionId)
+                        .filter((id: unknown) => typeof id === 'number'),
+                );
+
+                let nextId = 1;
+                while (usedIds.has(nextId)) {
+                    nextId++;
+                }
+
+                setQuestionId(String(nextId));
+            } catch (error: any) {
+                console.error('Failed to fetch question IDs:', error);
+                setErrorMessage('Failed to load the next available question ID.');
+            } finally {
+                setLoadingId(false);
+            }
+        };
+
+        fetchNextQuestionId();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -42,12 +74,13 @@ const AddQuestion = () => {
             console.log('Question created:', response.data);
             setSuccessMessage('Question added successfully.');
 
-            setQuestionId('');
             setTitle('');
             setDescription('');
             setCategories('');
             setDifficulty('');
             setSourceUrl('');
+
+            navigate('/admin/questions');
         } catch (error: any) {
             console.error('Create question error:', error);
             setErrorMessage(error.response?.data?.message || 'Failed to add question.');
@@ -124,9 +157,10 @@ const AddQuestion = () => {
                                                     id="questionId"
                                                     type="number"
                                                     className="form-control"
-                                                    value={questionId}
+                                                    value={loadingId ? 'Loading...' : questionId}
                                                     onChange={(e) => setQuestionId(e.target.value)}
                                                     required
+                                                    disabled={loadingId}
                                                 />
                                             </div>
 
@@ -222,7 +256,11 @@ const AddQuestion = () => {
                                                 />
                                             </div>
 
-                                            <button type="submit" className="btn btn-primary w-100">
+                                            <button
+                                                type="submit"
+                                                className="btn btn-primary w-100"
+                                                disabled={loadingId}
+                                            >
                                                 Add Question
                                             </button>
 

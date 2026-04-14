@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import NavBar from '../components/NavBar.tsx';
 import questionAxios from '../questionAxios.ts';
 import { useState, useEffect, useMemo } from 'react';
+import userAxios from '../userAxios.ts';
 
 type Question = {
     questionId: number;
@@ -13,38 +14,31 @@ type Question = {
 };
 
 type User = {
-    id: number;
-    name: string;
+    username: string;
+    displayName: string;
     email: string;
+    role: string;
+    id: string;
+    updatedAt: string;
 };
 
 const Admin = () => {
     const navigate = useNavigate();
     const name = localStorage.getItem('name') || 'Admin';
-    // const accessToken = localStorage.getItem('accessToken') || '';
 
     const [questions, setQuestions] = useState<Question[]>([]);
-    const [users] = useState<User[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchDashboardData = async () => {
         try {
-            // const [questionResponse, userResponse] = await Promise.all([
-            //     questionAxios.get('/questions'),
-            //     axios.get('http://localhost:3001/admin/users', {
-            //         headers: {
-            //             Authorization: `Bearer ${accessToken}`,
-            //         },
-            //     }),
-            // ]);
-            const questionResponse = await questionAxios.get('/questions');
-            // const userResponse = await axios.get('http://localhost:3001/users', {
-            //     headers: {
-            //         Authorization: `Bearer ${accessToken}`,
-            //     },
-            // });
+            const [questionResponse, userResponse] = await Promise.all([
+                questionAxios.get('/questions'),
+                userAxios.get('/admin/users'),
+            ]);
 
             console.log('questionResponse.data:', questionResponse.data);
+            console.log('userResponse.data:', userResponse.data);
 
             const mappedQuestions: Question[] = questionResponse.data.map((q: any) => ({
                 questionId: q.questionId,
@@ -52,9 +46,17 @@ const Admin = () => {
                 difficulty: q.difficulty,
                 category: q.categories,
             }));
+            const mappedUsers = userResponse.data.users.map((u: any) => ({
+                username: u.username,
+                displayName: u.displayName,
+                email: u.email,
+                role: u.role,
+                id: u.id,
+                updatedAt: u.updatedAt,
+            }));
 
             setQuestions(mappedQuestions);
-            // setUsers(userResponse.data);
+            setUsers(mappedUsers);
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         } finally {
@@ -85,7 +87,9 @@ const Admin = () => {
 
     const recentQuestions = [...questions].sort((a, b) => b.questionId - a.questionId).slice(0, 5);
 
-    const recentUsers = [...users].slice(0, 5);
+    const recentUsers = [...users]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 5);
 
     const stats = [
         { title: 'Total Questions', value: totalQuestions },
@@ -223,8 +227,10 @@ const Admin = () => {
                                                     key={user.id}
                                                     className="mb-3 border-bottom pb-2"
                                                 >
-                                                    <div className="fw-semibold">{user.name}</div>
-                                                    <small className="text-muted">
+                                                    <div className="text-black">
+                                                        {user.displayName}
+                                                    </div>
+                                                    <small className="text-warning">
                                                         {user.email}
                                                     </small>
                                                 </div>

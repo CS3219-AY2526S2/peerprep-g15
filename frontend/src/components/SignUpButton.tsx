@@ -1,5 +1,16 @@
+import { useNavigate } from 'react-router';
+
 const SignUpButton = () => {
-    return <div className="btn btn-outline-secondary">Sign Up</div>;
+    const navigate = useNavigate();
+
+    const navigateToSignUp = () => {
+        navigate('/signup');
+    };
+    return (
+        <div className="btn btn-outline-secondary" onClick={navigateToSignUp}>
+            Sign Up
+        </div>
+    );
 };
 
 export default SignUpButton;

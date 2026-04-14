@@ -4,12 +4,13 @@ import { useNavigate } from 'react-router';
 import NavBar from '../components/NavBar.tsx';
 import { useState, useEffect } from 'react';
 import questionAxios from '../questionAxios.ts';
+import { useMemo } from 'react';
 
 type Question = {
     questionId: number;
     title: string;
     difficulty: string;
-    category: string;
+    categories: string[];
 };
 
 const Questions = () => {
@@ -20,22 +21,19 @@ const Questions = () => {
     const [loading, setLoading] = useState(false);
     const [difficulty, setDifficulty] = useState('');
     const [category, setCategory] = useState('');
+    const [appliedDifficulty, setAppliedDifficulty] = useState('');
+    const [appliedCategory, setAppliedCategory] = useState('');
 
     const fetchQuestions = async () => {
         setLoading(true);
         try {
-            const response = await questionAxios.get('/questions', {
-                params: {
-                    difficulty,
-                    category,
-                },
-            });
+            const response = await questionAxios.get('/questions');
 
             const mappedQuestions = response.data.map((q: any) => ({
                 questionId: q.questionId,
                 title: q.title,
                 difficulty: q.difficulty,
-                category: q.categories?.join(', ') ?? '',
+                categories: q.categories ?? [],
             }));
 
             setQuestions(mappedQuestions);
@@ -50,9 +48,26 @@ const Questions = () => {
         fetchQuestions();
     }, []);
 
+    const uniqueCategories = useMemo(() => {
+        return Array.from(
+            new Set(
+                questions.flatMap((q) => q.categories.map((cat) => cat.trim()).filter(Boolean)),
+            ),
+        ).sort((a, b) => a.localeCompare(b));
+    }, [questions]);
+
+    const filteredQuestions = useMemo(() => {
+        return questions.filter((q) => {
+            const difficultyMatch = !appliedDifficulty || q.difficulty === appliedDifficulty;
+            const categoryMatch = !appliedCategory || q.categories.includes(appliedCategory);
+            return difficultyMatch && categoryMatch;
+        });
+    }, [questions, appliedDifficulty, appliedCategory]);
+
     const handleSearch = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        fetchQuestions();
+        setAppliedCategory(category);
+        setAppliedDifficulty(difficulty);
     };
 
     const handleAdd = () => {
@@ -60,7 +75,7 @@ const Questions = () => {
     };
 
     const handleEdit = (questionId: number) => {
-        navigate(`/admin/questions/edit/${questionId}`);
+        navigate(`/admin/questions/edit-question/${questionId}`);
     };
 
     const handleDelete = async (questionId: number) => {
@@ -143,24 +158,33 @@ const Questions = () => {
                         <div className="row g-3">
                             <div className="col-md-4">
                                 <label className="form-label">Difficulty</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
+                                <select
+                                    id="difficulty"
+                                    className="form-select"
                                     value={difficulty}
                                     onChange={(e) => setDifficulty(e.target.value)}
-                                    placeholder="Easy / Medium / Hard"
-                                />
+                                >
+                                    <option value="">All</option>
+                                    <option value="Easy">Easy</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Hard">Hard</option>
+                                </select>
                             </div>
 
                             <div className="col-md-4">
                                 <label className="form-label">Category</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
+                                <select
+                                    className="form-select"
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
-                                    placeholder="Category"
-                                />
+                                >
+                                    <option value="">All</option>
+                                    {uniqueCategories.map((cat) => (
+                                        <option key={cat} value={cat}>
+                                            {cat}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="col-md-4 d-flex align-items-end">
@@ -173,9 +197,9 @@ const Questions = () => {
 
                     <div className="bg-white rounded p-3 shadow-sm">
                         {loading ? (
-                            <p>Loading questions...</p>
-                        ) : questions.length === 0 ? (
-                            <p>No questions found.</p>
+                            <p className="text-dark mb-0">Loading questions...</p>
+                        ) : filteredQuestions.length === 0 ? (
+                            <p className="text-dark mb-0">No questions found.</p>
                         ) : (
                             <table className="table table-hover align-middle mb-0">
                                 <thead>
@@ -188,12 +212,12 @@ const Questions = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {questions.map((q) => (
+                                    {filteredQuestions.map((q) => (
                                         <tr key={q.questionId}>
                                             <td>{q.questionId}</td>
                                             <td>{q.title}</td>
                                             <td>{q.difficulty}</td>
-                                            <td>{q.category}</td>
+                                            <td>{q.categories.join(', ')}</td>
                                             <td>
                                                 <button
                                                     className="btn btn-sm btn-primary me-2"

@@ -22,8 +22,9 @@ questionAxios.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
-        if (error.response?.status === 500 && !originalRequest._retry) {
+        if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
+            console.log('error 401 detected, attempting token refresh:', error);
 
             try {
                 const refreshResponse = await authAxios.post('/auth/refresh');
@@ -39,6 +40,7 @@ questionAxios.interceptors.response.use(
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('name');
                 window.location.href = '/';
+                console.error('Token refresh failed, redirecting to login', refreshError);
                 return Promise.reject(refreshError);
             }
         }

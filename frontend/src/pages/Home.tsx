@@ -21,7 +21,6 @@ const Home = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isMatching, setIsMatching] = useState(false);
-    // const [matchedUser, setMatchedUser] = useState<string | null>(null);
     const [matchingMessage, setMatchingMessage] = useState<string | null>(null);
     const [queuedUserId, setQueuedUserId] = useState<string | null>(null);
     const navigate = useNavigate();
