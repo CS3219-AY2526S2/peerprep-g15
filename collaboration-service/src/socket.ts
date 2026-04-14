@@ -82,7 +82,7 @@ export function initSocket(server: http.Server) {
             const { userId, username } = socket.data;
             console.log('[join-room]', { roomId, userId, username });
             const session = await getSession(roomId);
-             console.log('[join-room] session found:', !!session, session?.userIds);
+            console.log('[join-room] session found:', !!session, session?.userIds);
 
             if (!session || !session.userIds.includes(userId)) {
                 console.log('[join-room] REJECTED - session not found or user not in session');
