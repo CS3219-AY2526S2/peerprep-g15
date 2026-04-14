@@ -1,13 +1,15 @@
 import 'dotenv/config';
+
 import { createApp } from './app';
-import { connectDB } from './config/db';
+import { connectRedis } from './config/redis';
 import { config } from './config/env';
 
 async function start() {
     try {
-        await connectDB(config.mongo.uri, config.mongo.dbName);
+        await connectRedis(config.redis.url);
 
         const app = createApp();
+
         app.listen(config.port, () => {
             console.log(`Matching service listening on http://localhost:${config.port}`);
         });

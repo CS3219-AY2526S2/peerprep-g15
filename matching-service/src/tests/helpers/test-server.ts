@@ -1,14 +1,12 @@
 import http from 'http';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
 import { createApp } from '../../app';
-
-let mongod: MongoMemoryServer;
+import { connectRedis, disconnectRedis } from '../../config/redis';
+import { config } from '../../config/env';
+import { resetMatchingState } from '../../services/matching-service';
 
 export async function startTestServer() {
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    await mongoose.connect(uri);
+    await connectRedis(config.redis.url);
+    await resetMatchingState();
 
     const app = createApp();
     const server = http.createServer(app);
@@ -19,6 +17,6 @@ export async function startTestServer() {
 
 export async function stopTestServer(server: http.Server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    await mongoose.disconnect();
-    await mongod.stop();
+    await resetMatchingState();
+    await disconnectRedis();
 }

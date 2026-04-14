@@ -1,12 +1,5 @@
 import { randomUUID } from 'crypto';
-import {
-    MatchHistoryModel,
-    MatchModel,
-    QueueHistoryModel,
-    QueueModel,
-    matchDocumentToResult,
-    queueDocumentToEntry,
-} from '../models/matching-persistence-model';
+import { getRedis } from '../config/redis';
 import type {
     Difficulty,
     MatchRequest,
@@ -28,20 +21,11 @@ export interface MatchingRepository {
     removeQueuedUser(userId: string): Promise<QueueEntry | null>;
     saveMatch(match: MatchResult): Promise<void>;
     endMatch(matchId: string): Promise<boolean>;
-    recordQueueEvent(
-        entry: QueueEntry,
-        eventType: 'queued' | 'matched' | 'left' | 'timed_out',
-        nowMs: number,
-        matchId?: string,
-    ): Promise<void>;
     attemptMatchAtomically?(
         entry: QueueEntry,
         nowMs: number,
-        accessToken: string | undefined,
         joiningUserAlreadyQueued: boolean,
     ): Promise<MatchResult | null>;
-    recordMatchHistory(match: MatchResult): Promise<void>;
-    markMatchHistoryEnded(matchId: string, nowMs: number): Promise<void>;
 }
 
 const TOPIC_EXPANSION_WAIT_MS = 15_000;
@@ -53,248 +37,366 @@ const DIFFICULTY_RANK: Record<Difficulty, number> = {
     medium: 1,
     hard: 2,
 };
-const ATOMIC_MATCH_CONFLICT_ERROR = 'ATOMIC_MATCH_CONFLICT_ERROR';
 
-class MongoMatchingRepository implements MatchingRepository {
+function normalizeTopic(topic: string) {
+    return topic.trim().toLowerCase();
+}
+
+function queueKey(topic: string) {
+    return `matching:queue:topic:${normalizeTopic(topic)}`;
+}
+
+function heartbeatKey() {
+    return 'matching:heartbeat';
+}
+
+function userKey(userId: string) {
+    return `matching:user:${userId}`;
+}
+
+function userMatchKey(userId: string) {
+    return `matching:userMatch:${userId}`;
+}
+
+function matchKey(matchId: string) {
+    return `matching:match:${matchId}`;
+}
+
+function topicsKey() {
+    return 'matching:topics';
+}
+
+async function cleanupTopicIfEmpty(topic: string) {
+    const redis = getRedis();
+    const count = await redis.zCard(queueKey(topic));
+
+    if (count === 0) {
+        await redis.sRem(topicsKey(), normalizeTopic(topic));
+    }
+}
+
+function serializeQueueEntry(entry: QueueEntry) {
+    return {
+        userId: entry.userId,
+        topic: entry.topic.trim(),
+        difficulty: entry.difficulty,
+        proficiency: entry.proficiency === undefined ? '' : String(entry.proficiency),
+        joinedAt: entry.joinedAt,
+        lastHeartbeatAt: entry.lastHeartbeatAt ?? entry.joinedAt,
+    };
+}
+
+function deserializeQueueEntry(data: Record<string, string>): QueueEntry | null {
+    if (!data.userId || !data.topic || !data.difficulty || !data.joinedAt) {
+        return null;
+    }
+
+    return {
+        userId: data.userId,
+        topic: data.topic,
+        difficulty: data.difficulty as Difficulty,
+        proficiency: data.proficiency === '' ? undefined : Number(data.proficiency),
+        joinedAt: data.joinedAt,
+        lastHeartbeatAt: data.lastHeartbeatAt || undefined,
+    };
+}
+
+function serializeMatch(match: MatchResult) {
+    return {
+        matchId: match.matchId,
+        userIds: JSON.stringify(match.userIds),
+        topic: match.topic,
+        difficulty: match.difficulty,
+        question: match.question ? JSON.stringify(match.question) : '',
+        createdAt: match.createdAt,
+        endedAt: match.endedAt ?? '',
+    };
+}
+
+function deserializeMatch(data: Record<string, string>): MatchResult | null {
+    if (!data.matchId || !data.userIds || !data.topic || !data.difficulty || !data.createdAt) {
+        return null;
+    }
+
+    return {
+        matchId: data.matchId,
+        userIds: JSON.parse(data.userIds) as [string, string],
+        topic: data.topic,
+        difficulty: data.difficulty as Difficulty,
+        question: data.question ? JSON.parse(data.question) : undefined,
+        createdAt: data.createdAt,
+        endedAt: data.endedAt || undefined,
+    };
+}
+
+class RedisMatchingRepository implements MatchingRepository {
     async clear() {
-        await Promise.all([
-            QueueModel.deleteMany({}),
-            MatchModel.deleteMany({}),
-            QueueHistoryModel.deleteMany({}),
-            MatchHistoryModel.deleteMany({}),
-        ]);
+        const redis = getRedis();
+        const keys = await redis.keys('matching:*');
+        if (keys.length > 0) {
+            await redis.del(keys);
+        }
     }
 
     async purgeTimedOut(nowMs: number) {
-        const cutoff = new Date(nowMs - QUEUE_TIMEOUT_MS);
-        await QueueModel.deleteMany({
-            $or: [
-                { lastHeartbeatAt: { $lte: cutoff } },
-                {
-                    lastHeartbeatAt: { $exists: false },
-                    joinedAt: { $lte: cutoff },
-                },
-            ],
-        });
+        const redis = getRedis();
+        const cutoff = nowMs - QUEUE_TIMEOUT_MS;
+        const staleUserIds = await redis.zRangeByScore(heartbeatKey(), 0, cutoff);
+
+        for (const userId of staleUserIds) {
+            const entry = await this.getQueuedUserEntry(userId);
+
+            if (!entry) {
+                await redis.zRem(heartbeatKey(), userId);
+                continue;
+            }
+
+            await redis
+                .multi()
+                .zRem(queueKey(entry.topic), userId)
+                .zRem(heartbeatKey(), userId)
+                .del(userKey(userId))
+                .exec();
+
+            await cleanupTopicIfEmpty(entry.topic);
+        }
     }
 
-    async getMatchByUserId(userId: string) {
-        const document = await MatchModel.findOne({
-            userIds: userId,
-            endedAt: { $exists: false },
-        }).lean();
-        return document ? matchDocumentToResult(document) : null;
+    async getMatchByUserId(userId: string): Promise<MatchResult | null> {
+        const redis = getRedis();
+        const matchId = await redis.get(userMatchKey(userId));
+        if (!matchId) return null;
+
+        const data = await redis.hGetAll(matchKey(matchId));
+        return deserializeMatch(data);
     }
 
-    async getQueuedUserEntry(userId: string) {
-        const document = await QueueModel.findOne({ userId }).lean();
-        return document ? queueDocumentToEntry(document) : null;
+    async getQueuedUserEntry(userId: string): Promise<QueueEntry | null> {
+        const redis = getRedis();
+        const data = await redis.hGetAll(userKey(userId));
+        return deserializeQueueEntry(data);
     }
 
-    async listQueuedUsers(nowMs: number) {
-        await this.purgeTimedOut(nowMs);
-        const documents = await QueueModel.find({}).sort({ joinedAt: 1 }).lean();
-        return documents.map((document) => queueDocumentToEntry(document));
-    }
+    async touchQueuedUserHeartbeat(userId: string, nowMs: number): Promise<QueueEntry | null> {
+        const redis = getRedis();
+        const entry = await this.getQueuedUserEntry(userId);
 
-    async touchQueuedUserHeartbeat(userId: string, nowMs: number) {
-        const cutoff = new Date(nowMs - QUEUE_TIMEOUT_MS);
-        const document = await QueueModel.findOneAndUpdate(
-            {
-                userId,
-                $or: [
-                    { lastHeartbeatAt: { $gt: cutoff } },
-                    {
-                        lastHeartbeatAt: { $exists: false },
-                        joinedAt: { $gt: cutoff },
-                    },
-                ],
-            },
-            {
-                $set: {
-                    lastHeartbeatAt: new Date(nowMs),
-                },
-            },
-            { new: true },
-        ).lean();
+        if (!entry) return null;
 
-        return document ? queueDocumentToEntry(document) : null;
-    }
+        if (isTimedOut(entry, nowMs)) {
+            await redis
+                .multi()
+                .zRem(queueKey(entry.topic), userId)
+                .zRem(heartbeatKey(), userId)
+                .del(userKey(userId))
+                .exec();
 
-    async enqueue(entry: QueueEntry) {
-        await QueueModel.create({
+            await cleanupTopicIfEmpty(entry.topic);
+            return null;
+        }
+
+        const heartbeatIso = new Date(nowMs).toISOString();
+
+        await redis
+            .multi()
+            .hSet(userKey(userId), { lastHeartbeatAt: heartbeatIso })
+            .zAdd(heartbeatKey(), [{ score: nowMs, value: userId }])
+            .exec();
+
+        return {
             ...entry,
-            topic: entry.topic.trim(),
-            joinedAt: new Date(entry.joinedAt),
-            lastHeartbeatAt: new Date(entry.lastHeartbeatAt ?? entry.joinedAt),
-        });
+            lastHeartbeatAt: heartbeatIso,
+        };
     }
 
-    async removeQueuedUser(userId: string) {
-        const document = await QueueModel.findOneAndDelete({ userId }).lean();
-        return document ? queueDocumentToEntry(document) : null;
+    async listQueuedUsers(nowMs: number): Promise<QueueEntry[]> {
+        await this.purgeTimedOut(nowMs);
+
+        const redis = getRedis();
+        const topics = await redis.sMembers(topicsKey());
+        const entries: QueueEntry[] = [];
+
+        for (const topic of topics) {
+            const userIds = await redis.zRange(queueKey(topic), 0, -1);
+
+            for (const userId of userIds) {
+                const entry = await this.getQueuedUserEntry(userId);
+                if (entry) {
+                    entries.push(entry);
+                }
+            }
+        }
+
+        entries.sort((a, b) => new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime());
+
+        return entries;
     }
 
-    async saveMatch(match: MatchResult) {
-        await MatchModel.create({
-            ...match,
-            createdAt: new Date(match.createdAt),
-        });
+    async enqueue(entry: QueueEntry): Promise<void> {
+        const redis = getRedis();
+        const joinedAtMs = new Date(entry.joinedAt).getTime();
+        const lastHeartbeatMs = new Date(entry.lastHeartbeatAt ?? entry.joinedAt).getTime();
+
+        await redis
+            .multi()
+            .hSet(userKey(entry.userId), serializeQueueEntry(entry))
+            .zAdd(queueKey(entry.topic), [{ score: joinedAtMs, value: entry.userId }])
+            .zAdd(heartbeatKey(), [{ score: lastHeartbeatMs, value: entry.userId }])
+            .sAdd(topicsKey(), normalizeTopic(entry.topic))
+            .exec();
     }
 
-    async endMatch(matchId: string) {
-        const result = await MatchModel.findOneAndDelete({ matchId }).lean();
-        return result !== null;
+    async removeQueuedUser(userId: string): Promise<QueueEntry | null> {
+        const redis = getRedis();
+        const entry = await this.getQueuedUserEntry(userId);
+
+        if (!entry) return null;
+
+        await redis
+            .multi()
+            .zRem(queueKey(entry.topic), userId)
+            .zRem(heartbeatKey(), userId)
+            .del(userKey(userId))
+            .exec();
+
+        await cleanupTopicIfEmpty(entry.topic);
+        return entry;
     }
 
-    async recordQueueEvent(
-        entry: QueueEntry,
-        eventType: 'queued' | 'matched' | 'left' | 'timed_out',
-        nowMs: number,
-        matchId?: string,
-    ) {
-        await QueueHistoryModel.create({
-            userId: entry.userId,
-            topic: entry.topic.trim(),
-            difficulty: entry.difficulty,
-            eventType,
-            matchId,
-            occurredAt: new Date(nowMs),
-        });
+    async saveMatch(match: MatchResult): Promise<void> {
+        const redis = getRedis();
+
+        await redis
+            .multi()
+            .hSet(matchKey(match.matchId), serializeMatch(match))
+            .set(userMatchKey(match.userIds[0]), match.matchId)
+            .set(userMatchKey(match.userIds[1]), match.matchId)
+            .exec();
+    }
+
+    async endMatch(matchId: string): Promise<boolean> {
+        const redis = getRedis();
+        const data = await redis.hGetAll(matchKey(matchId));
+        const match = deserializeMatch(data);
+
+        if (!match) return false;
+
+        await redis
+            .multi()
+            .del(matchKey(matchId))
+            .del(userMatchKey(match.userIds[0]))
+            .del(userMatchKey(match.userIds[1]))
+            .exec();
+
+        return true;
     }
 
     async attemptMatchAtomically(
         entry: QueueEntry,
         nowMs: number,
-        accessToken: string | undefined,
         joiningUserAlreadyQueued: boolean,
-    ) {
-        const session = await QueueModel.startSession();
+    ): Promise<MatchResult | null> {
+        await this.purgeTimedOut(nowMs);
+
+        const redis = getRedis();
+        const topicUserIds = await redis.zRange(queueKey(entry.topic), 0, -1);
+
+        const queuedUsers: QueueEntry[] = [];
+        for (const userId of topicUserIds) {
+            const queuedEntry = await this.getQueuedUserEntry(userId);
+            if (queuedEntry) {
+                queuedUsers.push(queuedEntry);
+            }
+        }
+
+        const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
+        if (!waitingUser) {
+            return null;
+        }
+
+        const criteria = resolveMatchCriteria(waitingUser, entry);
+        const question = await fetchRandomQuestionForMatch(criteria.topic, criteria.difficulty);
+
+        if (!question) {
+            console.warn('Match candidate found but no valid question available', {
+                joiningUserId: entry.userId,
+                waitingUserId: waitingUser.userId,
+                topic: criteria.topic,
+                difficulty: criteria.difficulty,
+            });
+            return null;
+        }
+
+        const watchedKeys = [
+            userKey(waitingUser.userId),
+            userMatchKey(waitingUser.userId),
+            userMatchKey(entry.userId),
+            ...(joiningUserAlreadyQueued ? [userKey(entry.userId)] : []),
+        ];
+
+        await redis.watch(watchedKeys);
 
         try {
-            const maybeMatch = await session.withTransaction(async () => {
-                const cutoff = new Date(nowMs - QUEUE_TIMEOUT_MS);
-                await QueueModel.deleteMany(
-                    {
-                        $or: [
-                            { lastHeartbeatAt: { $lte: cutoff } },
-                            {
-                                lastHeartbeatAt: { $exists: false },
-                                joinedAt: { $lte: cutoff },
-                            },
-                        ],
-                    },
-                    { session },
-                );
+            const joiningStillQueued = joiningUserAlreadyQueued
+                ? await redis.exists(userKey(entry.userId))
+                : 1;
 
-                const queuedDocuments = await QueueModel.find({})
-                    .sort({ joinedAt: 1 })
-                    .session(session)
-                    .lean();
-                const queuedUsers = queuedDocuments.map((document) =>
-                    queueDocumentToEntry(document),
-                );
+            const waitingStillQueued = await redis.exists(userKey(waitingUser.userId));
+            const joiningAlreadyMatched = await redis.exists(userMatchKey(entry.userId));
+            const waitingAlreadyMatched = await redis.exists(userMatchKey(waitingUser.userId));
 
-                const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
-                if (!waitingUser) {
-                    return null;
-                }
-
-                const criteria = resolveMatchCriteria(waitingUser, entry);
-                const question = await fetchRandomQuestionForMatch(
-                    criteria.topic,
-                    criteria.difficulty,
-                );
-
-                if (!question) {
-                    console.warn(
-                        'Match candidate found but no valid question available, keeping user queued',
-                        {
-                            joiningUserId: entry.userId,
-                            waitingUserId: waitingUser.userId,
-                            topic: criteria.topic,
-                            difficulty: criteria.difficulty,
-                        },
-                    );
-                    return null;
-                }
-
-                if (joiningUserAlreadyQueued) {
-                    const removedUsers = await QueueModel.deleteMany(
-                        { userId: { $in: [entry.userId, waitingUser.userId] } },
-                        { session },
-                    );
-                    if (removedUsers.deletedCount !== 2) {
-                        throw new Error(ATOMIC_MATCH_CONFLICT_ERROR);
-                    }
-                } else {
-                    const removedWaitingUser = await QueueModel.deleteOne(
-                        { userId: waitingUser.userId },
-                        { session },
-                    );
-                    if (removedWaitingUser.deletedCount !== 1) {
-                        return null;
-                    }
-                }
-
-                const match: MatchResult = {
-                    matchId: randomUUID(),
-                    userIds: [waitingUser.userId, entry.userId],
-                    topic: criteria.topic,
-                    difficulty: criteria.difficulty,
-                    question,
-                    createdAt: new Date(nowMs).toISOString(),
-                };
-
-                await MatchModel.create(
-                    [
-                        {
-                            ...match,
-                            createdAt: new Date(match.createdAt),
-                        },
-                    ],
-                    { session },
-                );
-
-                return match;
-            });
-
-            return maybeMatch ?? null;
-        } catch (error) {
-            if (isAtomicMatchConflictError(error)) {
+            if (
+                joiningStillQueued === 0 ||
+                waitingStillQueued === 0 ||
+                joiningAlreadyMatched === 1 ||
+                waitingAlreadyMatched === 1
+            ) {
+                await redis.unwatch();
                 return null;
             }
-            throw error;
+
+            const match: MatchResult = {
+                matchId: randomUUID(),
+                userIds: [waitingUser.userId, entry.userId],
+                topic: criteria.topic,
+                difficulty: criteria.difficulty,
+                question,
+                createdAt: new Date(nowMs).toISOString(),
+            };
+
+            const tx = redis.multi();
+
+            if (joiningUserAlreadyQueued) {
+                tx.zRem(queueKey(entry.topic), entry.userId);
+                tx.zRem(heartbeatKey(), entry.userId);
+                tx.del(userKey(entry.userId));
+            }
+
+            tx.zRem(queueKey(waitingUser.topic), waitingUser.userId);
+            tx.zRem(heartbeatKey(), waitingUser.userId);
+            tx.del(userKey(waitingUser.userId));
+
+            tx.hSet(matchKey(match.matchId), serializeMatch(match));
+            tx.set(userMatchKey(match.userIds[0]), match.matchId);
+            tx.set(userMatchKey(match.userIds[1]), match.matchId);
+
+            const result = await tx.exec();
+
+            if (result === null) {
+                return null;
+            }
+
+            await cleanupTopicIfEmpty(waitingUser.topic);
+            if (joiningUserAlreadyQueued) {
+                await cleanupTopicIfEmpty(entry.topic);
+            }
+
+            return match;
         } finally {
-            await session.endSession();
+            try {
+                await redis.unwatch();
+            } catch {}
         }
-    }
-
-    async recordMatchHistory(match: MatchResult) {
-        await MatchHistoryModel.updateOne(
-            { matchId: match.matchId },
-            {
-                $set: {
-                    userIds: match.userIds,
-                    topic: match.topic.trim(),
-                    difficulty: match.difficulty,
-                    question: match.question,
-                    createdAt: new Date(match.createdAt),
-                },
-            },
-            { upsert: true },
-        );
-    }
-
-    async markMatchHistoryEnded(matchId: string, nowMs: number) {
-        await MatchHistoryModel.updateOne(
-            { matchId },
-            {
-                $set: {
-                    endedAt: new Date(nowMs),
-                },
-            },
-        );
     }
 }
 
@@ -409,26 +511,9 @@ class InMemoryMatchingRepository implements MatchingRepository {
         }
         return found;
     }
-
-    async recordQueueEvent(
-        _entry: QueueEntry,
-        _eventType: 'queued' | 'matched' | 'left' | 'timed_out',
-        _nowMs: number,
-        _matchId?: string,
-    ) {
-        // No-op in memory repository for tests.
-    }
-
-    async recordMatchHistory(_match: MatchResult) {
-        // No-op in memory repository for tests.
-    }
-
-    async markMatchHistoryEnded(_matchId: string, _nowMs: number) {
-        // No-op in memory repository for tests.
-    }
 }
 
-let repository: MatchingRepository = new MongoMatchingRepository();
+let repository: MatchingRepository = new RedisMatchingRepository();
 
 export function createInMemoryMatchingRepository() {
     return new InMemoryMatchingRepository();
@@ -439,7 +524,7 @@ export function createInMemoryMatchingRepository() {
 // t = 30s expand to any difficulty within same topic, t = 60s timeout.
 // Within each stage, longest-waiting eligible user is selected for fairness.
 export function setMatchingRepository(nextRepository?: MatchingRepository) {
-    repository = nextRepository ?? new MongoMatchingRepository();
+    repository = nextRepository ?? new RedisMatchingRepository();
 }
 
 // Normalizes topic+difficulty into a stable bucket key for queue grouping.
@@ -489,6 +574,18 @@ function isTimedOut(entry: QueueEntry, nowMs: number) {
 
 function getDifficultyGap(first: Difficulty, second: Difficulty) {
     return Math.abs(DIFFICULTY_RANK[first] - DIFFICULTY_RANK[second]);
+}
+
+function isDuplicateQueueEntryError(error: unknown) {
+    if (typeof error !== 'object' || error === null) {
+        return false;
+    }
+
+    if (!('code' in error)) {
+        return false;
+    }
+
+    return (error as { code?: unknown }).code === 11000;
 }
 
 // Removes timed-out users from all queues so they are never considered for matching.
@@ -551,10 +648,7 @@ export function pickBestWaitingUserIndex(
     return bestIndex;
 }
 
-// Removes a specific user from whichever criteria queue they are currently waiting in.
-// Finds and removes the best eligible waiting user across all queues.
 function findBestWaitingCandidate(queue: QueueEntry[], joiningUser: QueueEntry, nowMs: number) {
-    let selectedCriteriaKey: string | null = null;
     let selectedIndex = -1;
     let selectedStage: number | null = null;
     let selectedJoinedAt = Number.POSITIVE_INFINITY;
@@ -574,79 +668,13 @@ function findBestWaitingCandidate(queue: QueueEntry[], joiningUser: QueueEntry, 
             stage < selectedStage ||
             (stage === selectedStage && joinedAtMs < selectedJoinedAt)
         ) {
-            selectedCriteriaKey = createCriteriaKey(candidate.topic, candidate.difficulty);
             selectedIndex = index;
             selectedStage = stage;
             selectedJoinedAt = joinedAtMs;
         }
     }
 
-    if (selectedCriteriaKey === null || selectedIndex < 0) {
-        return undefined;
-    }
-
-    return queue[selectedIndex];
-}
-
-function isMongoDuplicateKeyError(error: unknown) {
-    if (typeof error !== 'object' || error === null) {
-        return false;
-    }
-
-    if (!('code' in error)) {
-        return false;
-    }
-
-    const maybeCode = (error as { code?: unknown }).code;
-    return maybeCode === 11000;
-}
-
-function isAtomicMatchConflictError(error: unknown) {
-    if (!(error instanceof Error)) {
-        return false;
-    }
-
-    return error.message === ATOMIC_MATCH_CONFLICT_ERROR;
-}
-
-async function safeRecordQueueEvent(
-    entry: QueueEntry,
-    eventType: 'queued' | 'matched' | 'left' | 'timed_out',
-    nowMs: number,
-    matchId?: string,
-) {
-    try {
-        await repository.recordQueueEvent(entry, eventType, nowMs, matchId);
-    } catch (error) {
-        console.error('Failed to write queue history event', {
-            userId: entry.userId,
-            eventType,
-            matchId,
-            error,
-        });
-    }
-}
-
-async function safeRecordMatchHistory(match: MatchResult) {
-    try {
-        await repository.recordMatchHistory(match);
-    } catch (error) {
-        console.error('Failed to write match history record', {
-            matchId: match.matchId,
-            error,
-        });
-    }
-}
-
-async function safeMarkMatchHistoryEnded(matchId: string, nowMs: number) {
-    try {
-        await repository.markMatchHistoryEnded(matchId, nowMs);
-    } catch (error) {
-        console.error('Failed to mark match history ended', {
-            matchId,
-            error,
-        });
-    }
+    return selectedIndex < 0 ? undefined : queue[selectedIndex];
 }
 
 async function ensureMatchHasQuestion(match: MatchResult) {
@@ -664,25 +692,22 @@ async function ensureMatchHasQuestion(match: MatchResult) {
         return match;
     }
 
-    return {
+    const hydrated: MatchResult = {
         ...match,
         question,
     };
+
+    await repository.saveMatch(hydrated);
+    return hydrated;
 }
 
 async function attemptMatchForEntry(
     entry: QueueEntry,
     nowMs: number,
-    accessToken: string | undefined,
     joiningUserAlreadyQueued: boolean,
 ) {
     if (repository.attemptMatchAtomically) {
-        return repository.attemptMatchAtomically(
-            entry,
-            nowMs,
-            accessToken,
-            joiningUserAlreadyQueued,
-        );
+        return repository.attemptMatchAtomically(entry, nowMs, joiningUserAlreadyQueued);
     }
 
     const queuedUsers = await repository.listQueuedUsers(nowMs);
@@ -732,20 +757,6 @@ async function attemptMatchForEntry(
     };
 
     await repository.saveMatch(match);
-
-    if (!match.question) {
-        console.error('Match created without question');
-        return null;
-    }
-
-    await createCollabSession(match.matchId, match.userIds, String(match.question.questionId));
-
-    await Promise.all([
-        safeRecordQueueEvent(waitingUser, 'matched', nowMs, match.matchId),
-        safeRecordQueueEvent(entry, 'matched', nowMs, match.matchId),
-        safeRecordMatchHistory(match),
-    ]);
-
     return match;
 }
 
@@ -761,7 +772,22 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
     const existingQueuedEntry = await repository.getQueuedUserEntry(request.userId);
     if (existingQueuedEntry) {
-        return { state: 'queued' as const, entry: existingQueuedEntry };
+        if (isTimedOut(existingQueuedEntry, nowMs)) {
+            await repository.removeQueuedUser(request.userId);
+        } else {
+            await repository.touchQueuedUserHeartbeat(request.userId, nowMs);
+
+            const refreshedEntry = await repository.getQueuedUserEntry(request.userId);
+            if (refreshedEntry) {
+                const rematched = await attemptMatchForEntry(refreshedEntry, nowMs, true);
+
+                if (rematched) {
+                    return { state: 'matched' as const, match: rematched };
+                }
+
+                return { state: 'queued' as const, entry: refreshedEntry };
+            }
+        }
     }
 
     const entry: QueueEntry = {
@@ -771,15 +797,16 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
         lastHeartbeatAt: new Date(nowMs).toISOString(),
     };
 
-    const match = await attemptMatchForEntry(entry, nowMs, accessToken, false);
+    const match = await attemptMatchForEntry(entry, nowMs, false);
     if (match) {
         return { state: 'matched' as const, match };
     }
 
     try {
         await repository.enqueue(entry);
+        return { state: 'queued' as const, entry };
     } catch (error) {
-        if (!isMongoDuplicateKeyError(error)) {
+        if (!isDuplicateQueueEntryError(error)) {
             throw error;
         }
 
@@ -796,10 +823,6 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
         throw error;
     }
-
-    await safeRecordQueueEvent(entry, 'queued', nowMs);
-
-    return { state: 'queued' as const, entry };
 }
 
 // Refreshes liveness for a queued user so inactive ghosts can expire by TTL.
@@ -820,8 +843,6 @@ export async function leaveQueue(userId: string) {
     if (!removed) {
         return false;
     }
-
-    await safeRecordQueueEvent(removed, 'left', Date.now());
 
     return true;
 }
@@ -846,14 +867,13 @@ export async function getQueueStatus(
     if (entry) {
         if (isTimedOut(entry, nowMs)) {
             await repository.removeQueuedUser(userId);
-            await safeRecordQueueEvent(entry, 'timed_out', nowMs);
             return {
                 userId,
                 state: 'timed_out',
             };
         }
 
-        const rematched = await attemptMatchForEntry(entry, nowMs, accessToken, true);
+        const rematched = await attemptMatchForEntry(entry, nowMs, true);
         if (rematched) {
             return {
                 userId,
@@ -878,9 +898,6 @@ export async function getQueueStatus(
 // Ends a match by matchId and returns whether the match was found and deleted.
 export async function endMatch(matchId: string) {
     const removed = await repository.endMatch(matchId);
-    if (removed) {
-        await safeMarkMatchHistoryEnded(matchId, Date.now());
-    }
     return removed;
 }
 
