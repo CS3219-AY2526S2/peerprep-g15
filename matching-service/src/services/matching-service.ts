@@ -391,6 +391,14 @@ class RedisMatchingRepository implements MatchingRepository {
                 await cleanupTopicIfEmpty(entry.topic);
             }
 
+            if (match.question) {
+                await createCollabSession(
+                    match.matchId,
+                    match.userIds,
+                    String(match.question.questionId),
+                );
+            }
+
             return match;
         } finally {
             try {
@@ -711,6 +719,10 @@ async function attemptMatchForEntry(
     }
 
     const queuedUsers = await repository.listQueuedUsers(nowMs);
+    console.log('Attempting match for user', {
+        userId: entry.userId,
+        queuedUserIds: queuedUsers.map((user) => user.userId),
+    });
     const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
     if (!waitingUser) {
         return null;
@@ -757,6 +769,27 @@ async function attemptMatchForEntry(
     };
 
     await repository.saveMatch(match);
+
+    if (!match.question) {
+        console.error('Match created without question');
+        return null;
+    }
+
+    await createCollabSession(match.matchId, match.userIds, String(match.question.questionId));
+
+    console.log('Match created', {
+        matchId: match.matchId,
+        userIds: match.userIds,
+        topic: match.topic,
+        difficulty: match.difficulty,
+        questionId: match.question.questionId,
+    });
+
+    console.log('Room created for match', {
+        matchId: match.matchId,
+        roomId: `match_${match.matchId}`,
+    });
+
     return match;
 }
 
