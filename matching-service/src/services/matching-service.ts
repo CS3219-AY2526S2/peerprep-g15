@@ -315,10 +315,7 @@ class RedisMatchingRepository implements MatchingRepository {
         }
 
         const criteria = resolveMatchCriteria(waitingUser, entry);
-        const question = await fetchRandomQuestionForMatch(
-            criteria.topic,
-            criteria.difficulty,
-        );
+        const question = await fetchRandomQuestionForMatch(criteria.topic, criteria.difficulty);
 
         if (!question) {
             console.warn('Match candidate found but no valid question available', {
@@ -710,11 +707,7 @@ async function attemptMatchForEntry(
     joiningUserAlreadyQueued: boolean,
 ) {
     if (repository.attemptMatchAtomically) {
-        return repository.attemptMatchAtomically(
-            entry,
-            nowMs,
-            joiningUserAlreadyQueued,
-        );
+        return repository.attemptMatchAtomically(entry, nowMs, joiningUserAlreadyQueued);
     }
 
     const queuedUsers = await repository.listQueuedUsers(nowMs);
@@ -786,11 +779,7 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
             const refreshedEntry = await repository.getQueuedUserEntry(request.userId);
             if (refreshedEntry) {
-                const rematched = await attemptMatchForEntry(
-                    refreshedEntry,
-                    nowMs,
-                    true,
-                );
+                const rematched = await attemptMatchForEntry(refreshedEntry, nowMs, true);
 
                 if (rematched) {
                     return { state: 'matched' as const, match: rematched };
