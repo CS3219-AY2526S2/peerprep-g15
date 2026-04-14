@@ -1,7 +1,6 @@
 import {
     createSession,
     getSession,
-    updateCode,
     voteLanguage,
     endSession,
     handleDisconnect,
@@ -9,15 +8,20 @@ import {
     addMessageToSession,
 } from '../../services/collaboration-service';
 import { Session } from '../../models/collaboration-model';
+import { fetchQuestionById } from '../../services/question-service';
 import axios from 'axios';
+import { Question } from '../../types/question';
 
 // mock the Session model, axios, and uuid
 jest.mock('../../models/collaboration-model');
+jest.mock('../../services/question-service');
 jest.mock('axios');
 jest.mock('uuid', () => ({ v4: jest.fn(() => 'mocked-room-id') }));
 
 const mockedSession = jest.mocked(Session);
 const mockedAxios = jest.mocked(axios);
+
+const mockedFetchQuestionById = fetchQuestionById as jest.MockedFunction<typeof fetchQuestionById>;
 
 // helper to create a fake session object
 const mockSession = (overrides = {}) => ({
@@ -67,19 +71,6 @@ describe('getSession', () => {
 
         const result = await getSession('fake-room');
         expect(result).toBeNull();
-    });
-});
-
-// ─── updateCode ───────────────────────────────────────────
-
-describe('updateCode', () => {
-    it('should update the code in the session', async () => {
-        mockedSession.findOneAndUpdate = jest
-            .fn()
-            .mockResolvedValue(mockSession({ code: 'console.log("hi")' }));
-
-        const result = await updateCode('room1', 'console.log("hi")');
-        expect(result?.code).toBe('console.log("hi")');
     });
 });
 
@@ -148,6 +139,20 @@ describe('voteLanguage', () => {
     });
 
     it('should start session if both users vote same language', async () => {
+        const MOCK_QUESTION: Question = {
+            questionId: 'mock-id-123',
+            title: 'Two Sum',
+            description:
+                'Given an array of integers, return indices of the two numbers such that they add up to a specific target.',
+            difficulty: 'Easy',
+            supportedLanguages: ['javascript', 'python', 'java'],
+            starterCode: {
+                javascript: 'var twoSum = function(nums, target) {\n\n};',
+                python: 'class Solution:\n    def twoSum(self, nums, target):',
+                java: 'class Solution {\n    public int[] twoSum(int[] nums, int target) {\n\n    }\n}',
+            },
+        };
+        mockedFetchQuestionById.mockResolvedValue(MOCK_QUESTION);
         mockedSession.findOne = jest.fn().mockResolvedValue(mockSession());
         const twoVotesSame = new Map([
             ['user1', 'python'],

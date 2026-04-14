@@ -116,14 +116,11 @@ const Collab = () => {
     useEffect(() => {
         const s = io(COLLAB_URL, {
             transports: ['websocket'],
-            auth: {
-                token: localStorage.getItem('accessToken') || '',
-            },
         });
         setSocket(s);
 
         s.on('connect', () => {
-            s.emit('join-room', roomId);
+            s.emit('join-room', roomId, userId, name);
         });
 
         s.on('session-state', (data: { session: SessionState; question: Question }) => {
@@ -301,7 +298,7 @@ const Collab = () => {
                 setSubmitTimer((prev) => {
                     if (prev <= 1) {
                         clearInterval(interval);
-                        socket?.emit('leave-session', roomId);
+                        socket?.emit('leave-session', roomId, userId);
                         return 0;
                     }
                     return prev - 1;
@@ -361,7 +358,7 @@ const Collab = () => {
 
     const handleLockIn = () => {
         if (!selectedLanguage || !socket) return;
-        socket.emit('lock-in', roomId, selectedLanguage);
+        socket.emit('lock-in', roomId, userId, selectedLanguage);
         setLockedIn(true);
     };
 
@@ -374,6 +371,7 @@ const Collab = () => {
         socket.emit(
             'run-code',
             roomId,
+            userId,
             code,
             selectedLanguage,
             filteredTestCases,
@@ -387,6 +385,7 @@ const Collab = () => {
         socket.emit(
             'submit-code',
             roomId,
+            userId,
             code,
             selectedLanguage,
             question?.testCases ?? [],
@@ -399,23 +398,17 @@ const Collab = () => {
         if (!chatInput.trim() || !socket) return;
         const msg = {
             roomId,
+            senderId: userId,
+            username: name,
             content: chatInput.trim(),
         };
         socket.emit('send-message', msg);
-        setMessages((prev) => [
-            ...prev,
-            {
-                senderId: userId,
-                username: name,
-                content: chatInput.trim(),
-                timestamp: new Date().toISOString(),
-            },
-        ]);
+        setMessages((prev) => [...prev, { ...msg, timestamp: new Date().toISOString() }]);
         setChatInput('');
     };
 
     const handleLeave = async () => {
-        socket?.emit('leave-session', roomId);
+        socket?.emit('leave-session', roomId, userId);
         window.location.href = '/home';
     };
 

@@ -10,6 +10,7 @@ import {
 } from '../../services/matching-service';
 import { setAuthServiceFetch } from '../../services/auth-service.js';
 import { setQuestionServiceFetch } from '../../services/question-service';
+import { setCollabServiceFetch } from '../../services/collab-service';
 
 let server: Server;
 let baseUrl: string;
@@ -112,16 +113,8 @@ async function mockAuthResolveFetch(input: URL, init?: RequestInit) {
 
 async function mockQuestionFetch(input: URL, init?: RequestInit) {
     const url = new URL(input.toString());
-    if (url.pathname !== '/questions') {
+    if (url.pathname !== '/internal/questions') {
         return new Response('Not found', { status: 404 });
-    }
-
-    const authorization = new Headers(init?.headers).get('Authorization');
-    if (!authorization?.startsWith('Bearer access-')) {
-        return new Response(JSON.stringify({ message: 'Missing or invalid token' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' },
-        });
     }
 
     const difficulty = url.searchParams.get('difficulty');
@@ -173,6 +166,7 @@ async function withMockedNow<T>(nowMs: number, operation: () => Promise<T>) {
 test.before(async () => {
     setAuthServiceFetch(mockAuthResolveFetch);
     setQuestionServiceFetch(mockQuestionFetch);
+    setCollabServiceFetch(async () => new Response('{}', { status: 200 }));
     setMatchingRepository(createInMemoryMatchingRepository());
 
     const app = createApp();
@@ -196,6 +190,7 @@ test.after(async () => {
 
     setAuthServiceFetch();
     setQuestionServiceFetch();
+    setCollabServiceFetch();
     setMatchingRepository();
 });
 

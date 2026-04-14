@@ -11,9 +11,12 @@ export const config = {
         },
     },
     questionService: {
-        get baseUrl() {
-            return process.env.QUESTION_SERVICE_URL ?? 'http://localhost:3002';
-        },
+        baseUrl: process.env.QUESTION_SERVICE_URL ?? 'http://localhost:3002',
+        internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+    },
+    collaborationService: {
+        baseUrl: process.env.COLLABORATION_SERVICE_URL ?? 'http://localhost:3004',
+        internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     },
     internal: {
         get serviceToken() {

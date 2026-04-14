@@ -1,5 +1,5 @@
 import { time } from 'console';
-import mongoose from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 const sessionSchema = new mongoose.Schema(
     {
@@ -24,6 +24,16 @@ const sessionSchema = new mongoose.Schema(
                 username: String,
                 content: String,
                 timestamp: { type: Date, default: Date.now },
+            },
+        ],
+        yjsState: { type: Buffer, default: null },
+        attempts: [
+            {
+                code: String,
+                language: String,
+                passed: Boolean,
+                results: Schema.Types.Mixed,
+                submittedAt: { type: Date, default: Date.now },
             },
         ],
     },

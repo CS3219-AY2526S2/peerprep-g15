@@ -8,6 +8,7 @@ import type {
     QueueStatus,
 } from '../models/matching-model';
 import { fetchRandomQuestionForMatch } from './question-service';
+import { createCollabSession } from './collab-service';
 
 export interface MatchingRepository {
     clear(): Promise<void>;
@@ -682,12 +683,12 @@ function findBestWaitingCandidate(queue: QueueEntry[], joiningUser: QueueEntry, 
     return selectedIndex < 0 ? undefined : queue[selectedIndex];
 }
 
-async function ensureMatchHasQuestion(match: MatchResult, accessToken?: string) {
+async function ensureMatchHasQuestion(match: MatchResult) {
     if (match.question) {
         return match;
     }
 
-    const question = await fetchRandomQuestionForMatch(match.topic, match.difficulty, accessToken);
+    const question = await fetchRandomQuestionForMatch(match.topic, match.difficulty);
     if (!question) {
         console.warn('Unable to hydrate question for existing match', {
             matchId: match.matchId,
@@ -728,11 +729,7 @@ async function attemptMatchForEntry(
     }
 
     const criteria = resolveMatchCriteria(waitingUser, entry);
-    const question = await fetchRandomQuestionForMatch(
-        criteria.topic,
-        criteria.difficulty,
-        accessToken,
-    );
+    const question = await fetchRandomQuestionForMatch(criteria.topic, criteria.difficulty);
 
     if (!question) {
         console.warn('Match candidate found but no valid question available, keeping user queued', {
@@ -781,7 +778,7 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
     const existingMatch = await repository.getMatchByUserId(request.userId);
     if (existingMatch) {
-        const hydratedMatch = await ensureMatchHasQuestion(existingMatch, accessToken);
+        const hydratedMatch = await ensureMatchHasQuestion(existingMatch);
         return { state: 'matched' as const, match: hydratedMatch };
     }
 
@@ -832,7 +829,7 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
         const concurrentMatch = await repository.getMatchByUserId(request.userId);
         if (concurrentMatch) {
-            const hydratedMatch = await ensureMatchHasQuestion(concurrentMatch, accessToken);
+            const hydratedMatch = await ensureMatchHasQuestion(concurrentMatch);
             return { state: 'matched' as const, match: hydratedMatch };
         }
 
@@ -875,7 +872,7 @@ export async function getQueueStatus(
 ): Promise<QueueStatus> {
     const activeMatch = await repository.getMatchByUserId(userId);
     if (activeMatch) {
-        const hydratedMatch = await ensureMatchHasQuestion(activeMatch, accessToken);
+        const hydratedMatch = await ensureMatchHasQuestion(activeMatch);
         return {
             userId,
             state: 'matched',

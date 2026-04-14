@@ -9,6 +9,9 @@ import {
     getComparator,
 } from '../utils/execution-harness';
 import { ExecutionSpec, SubmissionCaseResult, TestCase } from '../types/execution';
+import { fetchQuestionById } from './question-service';
+import { AppError } from '../utils/app-error';
+import * as Y from 'yjs';
 
 interface Judge0Response {
     stdout: string | null;
@@ -42,15 +45,10 @@ export async function getSession(roomId: string) {
     return await Session.findOne({ roomId });
 }
 
-// update the code in the session
-export async function updateCode(roomId: string, code: string) {
-    return await Session.findOneAndUpdate({ roomId }, { code }, { new: true });
-}
-
 export async function voteLanguage(roomId: string, userId: string, language: string) {
     const existing = await getSession(roomId);
     if (existing?.languageVotes?.get(userId)) {
-        throw new Error('User has already locked in');
+        throw new AppError(400, 'User has already locked in');
     }
 
     const session = await Session.findOneAndUpdate(
@@ -59,22 +57,46 @@ export async function voteLanguage(roomId: string, userId: string, language: str
         { new: true },
     );
 
+    if (!session) throw new AppError(404, 'Session not found');
+    if (!session.questionId) throw new AppError(400, 'Session has no questionId');
+
     const votes = session?.languageVotes;
     if (votes?.size === 2) {
         const languages = Array.from(votes.values());
 
         if (languages[0] === languages[1]) {
-            return await Session.findOneAndUpdate(
+            const question = await fetchQuestionById(session.questionId);
+            if (!question) throw new AppError(404, 'Question not found');
+            const starterCode = question.starterCode?.[languages[0]] ?? '';
+
+            const ydoc = new Y.Doc();
+            const ytext = ydoc.getText('code');
+            if (starterCode) {
+                ytext.insert(0, starterCode);
+            }
+
+            const updated = await Session.findOneAndUpdate(
                 { roomId },
-                { status: 'active', language: languages[0] },
+                {
+                    status: 'active',
+                    language: languages[0],
+                    yjsState: Buffer.from(Y.encodeStateAsUpdate(ydoc)),
+                },
                 { new: true },
             );
+            ydoc.destroy();
+
+            return updated;
         }
 
         return await endSession(roomId);
     }
 
     return session;
+}
+
+export async function persistYjsState(roomId: string, yjsState: Buffer, code: string) {
+    return await Session.findOneAndUpdate({ roomId }, { yjsState, code }, { new: true });
 }
 
 export async function executeCode(roomId: string, code: string, language: string) {
@@ -105,6 +127,24 @@ export async function executeCode(roomId: string, code: string, language: string
         time: response.data.time,
         memory: response.data.memory,
     };
+}
+
+export async function saveAttempt(
+    roomId: string,
+    code: string,
+    language: string,
+    passed: boolean,
+    results: any,
+) {
+    return await Session.findOneAndUpdate(
+        { roomId },
+        {
+            $push: {
+                attempts: { code, language, passed, results, submittedAt: new Date() },
+            },
+        },
+        { new: true },
+    );
 }
 
 async function runSingleTestCase(

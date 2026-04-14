@@ -4,25 +4,55 @@ import * as Y from 'yjs';
 import {
     getSession,
     voteLanguage,
-    updateCode,
     endSession,
     handleDisconnect,
     submitCode,
+    saveAttempt,
     addMessageToSession,
+    persistYjsState,
 } from './services/collaboration-service';
 import { ExecutionSpec, TestCase } from './types/execution';
+import { fetchQuestionById } from './services/question-service';
+import { endMatchInMatchingService } from './services/matching-service';
+import { resolveAuthUser } from './services/auth-service';
 
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 const languageTimers = new Map<string, NodeJS.Timeout>();
 const runCodeTimers = new Map<string, NodeJS.Timeout>();
 const roomDocs = new Map<string, Y.Doc>();
+const persistTimers = new Map<string, NodeJS.Timeout>();
+
+function debouncedPersistYjs(roomId: string) {
+    if (persistTimers.has(roomId)) {
+        clearTimeout(persistTimers.get(roomId)!);
+    }
+
+    const timer = setTimeout(async () => {
+        persistTimers.delete(roomId);
+        const doc = roomDocs.get(roomId);
+        if (!doc) return;
+
+        console.log(`[debounce] Saving yjsState for room ${roomId}`);
+
+        await persistYjsState(
+            roomId,
+            Buffer.from(Y.encodeStateAsUpdate(doc)),
+            doc.getText('code').toString(),
+        );
+    }, 2000);
+
+    persistTimers.set(roomId, timer);
+}
 
 async function persistCode(roomId: string) {
     const doc = roomDocs.get(roomId);
     if (!doc) return;
 
-    const code = doc.getText('code').toString();
-    if (code) await updateCode(roomId, code);
+    await persistYjsState(
+        roomId,
+        Buffer.from(Y.encodeStateAsUpdate(doc)),
+        doc.getText('code').toString(),
+    );
 }
 
 export function initSocket(server: http.Server) {
@@ -30,10 +60,32 @@ export function initSocket(server: http.Server) {
         cors: { origin: '*' },
     });
 
+    io.use(async (socket, next) => {
+        const token = socket.handshake.auth.token;
+        if (!token) return next(new Error('Missing auth token'));
+
+        try {
+            const user = await resolveAuthUser(token);
+            socket.data.userId = user.id;
+            socket.data.username = user.username;
+            next();
+        } catch (err) {
+            next(new Error('Invalid or expired token'));
+        }
+    });
+
     io.on('connection', (socket) => {
         console.log('user connected:', socket.id);
 
-        socket.on('join-room', async (roomId: string, userId: string, username: string) => {
+        socket.on('join-room', async (roomId: string) => {
+            const { userId, username } = socket.data;
+            const session = await getSession(roomId);
+
+            if (!session || !session.userIds.includes(userId)) {
+                socket.emit('join-error', { message: 'Invalid session or user' });
+                return;
+            }
+
             socket.join(roomId);
             socket.data.roomId = roomId;
             socket.data.userId = userId;
@@ -57,8 +109,18 @@ export function initSocket(server: http.Server) {
                 io.to(roomId).emit('user-reconnected', { userId });
             }
 
-            const session = await getSession(roomId);
-            socket.emit('session-state', session);
+            if (!roomDocs.has(roomId) && session?.yjsState) {
+                const doc = new Y.Doc();
+                Y.applyUpdate(doc, new Uint8Array(session.yjsState));
+                roomDocs.set(roomId, doc);
+            }
+
+            let question = null;
+            if (session?.questionId) {
+                question = await fetchQuestionById(session.questionId);
+            }
+
+            socket.emit('session-state', { session, question });
 
             if (roomDocs.has(roomId)) {
                 const state = Y.encodeStateAsUpdate(roomDocs.get(roomId)!);
@@ -79,6 +141,7 @@ export function initSocket(server: http.Server) {
                     const currentSession = await getSession(roomId);
                     if (currentSession?.status === 'pending') {
                         await endSession(roomId);
+                        await endMatchInMatchingService(roomId);
                         io.to(roomId).emit('language-timeout');
                     }
                 }, 30000);
@@ -87,34 +150,35 @@ export function initSocket(server: http.Server) {
             }
         });
 
-        socket.on('lock-in', async (roomId: string, userId: string, language: string) => {
-            const session = await voteLanguage(roomId, userId, language);
+        socket.on('lock-in', async (roomId: string, language: string) => {
+            try {
+                const { userId } = socket.data;
+                const session = await voteLanguage(roomId, userId, language);
 
-            console.log('lock-in result:', {
-                userId,
-                status: session?.status,
-                language: session?.language,
-            });
+                if (session?.status === 'active') {
+                    clearTimeout(languageTimers.get(roomId)!);
+                    languageTimers.delete(roomId);
 
-            if (session?.status === 'active') {
-                clearTimeout(languageTimers.get(roomId)!);
-                languageTimers.delete(roomId);
+                    if (session.yjsState) {
+                        const doc = new Y.Doc();
+                        Y.applyUpdate(doc, new Uint8Array(session.yjsState));
+                        roomDocs.set(roomId, doc);
+                    }
 
-                socket.emit('session-started', {
-                    language: session.language,
-                    insertStarter: true,
-                });
-
-                socket.to(roomId).emit('session-started', {
-                    language: session.language,
-                    insertStarter: false,
-                });
-            } else if (session?.status === 'ended') {
-                clearTimeout(languageTimers.get(roomId)!);
-                languageTimers.delete(roomId);
-                io.to(roomId).emit('language-mismatch');
-            } else {
-                io.to(roomId).emit('user-locked-in', { userId });
+                    io.to(roomId).emit('session-started', {
+                        language: session.language,
+                        yjsState: session.yjsState,
+                    });
+                } else if (session?.status === 'ended') {
+                    clearTimeout(languageTimers.get(roomId)!);
+                    languageTimers.delete(roomId);
+                    await endMatchInMatchingService(roomId);
+                    io.to(roomId).emit('language-mismatch');
+                } else {
+                    io.to(roomId).emit('user-locked-in', { userId });
+                }
+            } catch (err: any) {
+                socket.emit('lock-in-error', { message: err?.message || 'Lock-in failed' });
             }
         });
 
@@ -124,6 +188,8 @@ export function initSocket(server: http.Server) {
             const doc = roomDocs.get(roomId)!;
             Y.applyUpdate(doc, update);
             socket.to(roomId).emit('yjs-update', update);
+
+            debouncedPersistYjs(roomId);
         });
 
         socket.on('disconnect', async () => {
@@ -142,7 +208,9 @@ export function initSocket(server: http.Server) {
                 const timer = setTimeout(async () => {
                     const sessionEnded = await handleDisconnect(roomId);
                     if (sessionEnded) {
+                        await endMatchInMatchingService(roomId);
                         roomDocs.delete(roomId);
+                        persistTimers.delete(roomId);
                         io.to(roomId).emit('session-ended', { reason: 'disconnect' });
                     }
                 }, 30000);
@@ -151,6 +219,7 @@ export function initSocket(server: http.Server) {
             } else if (session?.status === 'pending' && usersInRoom >= 1) {
                 await endSession(roomId);
                 roomDocs.delete(roomId);
+                persistTimers.delete(roomId);
                 io.to(roomId).emit('session-ended', { reason: 'disconnect' });
             }
         });
@@ -159,12 +228,12 @@ export function initSocket(server: http.Server) {
             'run-code',
             async (
                 roomId: string,
-                userId: string,
                 code: string,
                 language: string,
                 testCases: TestCase[],
                 executionSpec: ExecutionSpec,
             ) => {
+                const { userId } = socket.data;
                 const session = await getSession(roomId);
                 if (!session) return;
                 if (session.status !== 'active') return;
@@ -205,12 +274,12 @@ export function initSocket(server: http.Server) {
             'submit-code',
             async (
                 roomId: string,
-                userId: string,
                 code: string,
                 language: string,
                 testCases: TestCase[],
                 executionSpec: ExecutionSpec,
             ) => {
+                const { userId } = socket.data;
                 const session = await getSession(roomId);
                 if (!session || session.status !== 'active') return;
                 if (!session.userIds.includes(userId)) return;
@@ -227,6 +296,8 @@ export function initSocket(server: http.Server) {
                         executionSpec,
                     );
 
+                    await saveAttempt(roomId, code, language, result.passed, result.results);
+
                     io.to(roomId).emit('submit-result', result);
                 } catch (err: any) {
                     io.to(roomId).emit('code-error', {
@@ -239,22 +310,25 @@ export function initSocket(server: http.Server) {
         socket.on('leave-session', async (roomId: string) => {
             await persistCode(roomId);
             await endSession(roomId);
+            await endMatchInMatchingService(roomId);
             roomDocs.delete(roomId);
+            persistTimers.delete(roomId);
             io.to(roomId).emit('session-ended', { reason: 'left' });
             socket.leave(roomId);
         });
 
         socket.on('send-message', async (data) => {
-            const { roomId, senderId, username, content } = data;
+            const { roomId, content } = data;
+            const { userId, username } = socket.data;
 
             await addMessageToSession(roomId, {
-                senderId,
+                senderId: userId,
                 username,
                 content,
             });
 
             socket.to(roomId).emit('receive-message', {
-                senderId,
+                senderId: userId,
                 username,
                 content,
                 timestamp: new Date(),

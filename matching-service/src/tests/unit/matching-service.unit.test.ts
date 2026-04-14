@@ -12,6 +12,7 @@ import {
     setMatchingRepository,
 } from '../../services/matching-service';
 import { setQuestionServiceFetch } from '../../services/question-service';
+import { setCollabServiceFetch } from '../../services/collab-service';
 import type { MatchResult, QueueEntry } from '../../models/matching-model';
 import type { MatchingRepository } from '../../services/matching-service';
 
@@ -54,20 +55,10 @@ const questions = [
     },
 ];
 
-process.env.QUESTION_SERVICE_URL = 'http://localhost:3002';
-
 async function mockQuestionFetch(input: URL, init?: RequestInit) {
     const url = new URL(input.toString());
-    if (url.pathname !== '/questions') {
+    if (url.pathname !== '/internal/questions') {
         return new Response('Not found', { status: 404 });
-    }
-
-    const authorization = new Headers(init?.headers).get('Authorization');
-    if (!authorization?.startsWith('Bearer access-')) {
-        return new Response(JSON.stringify({ message: 'Missing or invalid token' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' },
-        });
     }
 
     const difficulty = url.searchParams.get('difficulty');
@@ -83,12 +74,14 @@ async function mockQuestionFetch(input: URL, init?: RequestInit) {
 
 test.beforeEach(async () => {
     setQuestionServiceFetch(mockQuestionFetch);
+    setCollabServiceFetch(async () => new Response('{}', { status: 200 }));
     setMatchingRepository(createInMemoryMatchingRepository());
     await resetMatchingState();
 });
 
 test.after(() => {
     setQuestionServiceFetch();
+    setCollabServiceFetch();
     setMatchingRepository();
 });
 

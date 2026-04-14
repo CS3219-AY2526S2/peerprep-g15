@@ -98,14 +98,8 @@ function pickRandomQuestion(questions: MatchedQuestion[]) {
 export async function fetchRandomQuestionForMatch(
     topic: string,
     difficulty: Difficulty,
-    accessToken?: string,
 ): Promise<MatchedQuestion | undefined> {
-    if (!accessToken) {
-        logQuestionSelectionFailure('missing_access_token', topic, difficulty);
-        return undefined;
-    }
-
-    const questionsUrl = new URL('/questions', config.questionService.baseUrl);
+    const questionsUrl = new URL('/internal/questions', config.questionService.baseUrl);
     const questionDifficulty = toQuestionDifficulty(difficulty);
     if (!questionDifficulty) {
         logQuestionSelectionFailure('no_questions_for_difficulty', topic, difficulty, {
@@ -121,7 +115,7 @@ export async function fetchRandomQuestionForMatch(
         response = await fetchImpl(questionsUrl, {
             method: 'GET',
             headers: {
-                Authorization: `Bearer ${accessToken}`,
+                'x-internal-service-token': config.questionService.internalServiceToken,
             },
         });
     } catch (error) {
