@@ -20,12 +20,9 @@ export const config = {
             return process.env.INTERNAL_SERVICE_TOKEN ?? '';
         },
     },
-    mongo: {
-        get uri() {
-            return process.env.MONGO_URI ?? '';
-        },
-        get dbName() {
-            return process.env.MONGO_DB_NAME ?? '';
+    redis: {
+        get url() {
+            return process.env.REDIS_URL ?? 'redis://localhost:6379';
         },
     },
 };

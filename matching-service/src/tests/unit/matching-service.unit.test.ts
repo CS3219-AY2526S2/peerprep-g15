@@ -530,15 +530,6 @@ test('duplicate enqueue conflict is treated as idempotent queued response', asyn
         async endMatch() {
             return false;
         },
-        async recordQueueEvent() {
-            // No-op for this focused behavior test.
-        },
-        async recordMatchHistory() {
-            // No-op for this focused behavior test.
-        },
-        async markMatchHistoryEnded() {
-            // No-op for this focused behavior test.
-        },
     };
 
     setMatchingRepository(repository);
