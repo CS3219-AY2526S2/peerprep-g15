@@ -16,13 +16,11 @@ export const config = {
     userService: {
         get baseUrl() {
             return process.env.USER_SERVICE_URL ?? 'http://localhost:3001';
-        }
+        },
     },
     internal: {
         get serviceToken() {
             return process.env.INTERNAL_SERVICE_TOKEN ?? '';
-        }
-    }
+        },
+    },
 };
-
-

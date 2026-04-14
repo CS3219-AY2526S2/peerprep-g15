@@ -70,6 +70,24 @@ services:
             retries: 5
             start_period: 10s
 
+    history-service:
+        build:
+            context: ./history-service
+        ports:
+            - '3005:3005'
+        env_file:
+            - ./history-service/.env.docker
+        depends_on:
+            user-service:
+                condition: service_healthy
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3005/health']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+
     frontend:
         build:
             context: ./frontend/peerprep-g15
@@ -83,5 +101,7 @@ services:
             matching-service:
                 condition: service_healthy
             collaboration-service:
+                condition: service_healthy
+            history-service:
                 condition: service_healthy
         restart: unless-stopped

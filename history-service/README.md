@@ -17,10 +17,12 @@ MONGO_DB_NAME=add-db-name
 ```
 
 Required:
+
 - `MONGO_URI`
 - `MONGO_DB_NAME`
 
 Optional:
+
 - `PORT` (defaults to `3005`)
 
 ## Run
@@ -48,8 +50,8 @@ Response:
 
 ```json
 {
-  "status": "ok",
-  "service": "history-service"
+    "status": "ok",
+    "service": "history-service"
 }
 ```
 
@@ -60,12 +62,14 @@ Response:
 - Content-Type: `application/json`
 
 Required body fields:
+
 - `userId` (string)
 - `language` (string)
 - `code` (string)
 - `passed` (boolean)
 
 Optional body fields:
+
 - `roomId` (string)
 - `questionId` (string or number)
 - `questionTitle` (string)
@@ -77,36 +81,6 @@ Example request:
 
 ```json
 {
-  "userId": "u123",
-  "roomId": "room-1",
-  "questionId": "42",
-  "questionTitle": "Two Sum",
-  "language": "typescript",
-  "code": "function twoSum(nums, target) { return [0,1]; }",
-  "passed": true,
-  "results": [
-    {
-      "input": [2, 7, 11, 15],
-      "expected": [0, 1],
-      "actual": [0, 1],
-      "passed": true,
-      "stderr": null,
-      "compileOutput": null,
-      "message": null,
-      "status": "Accepted"
-    }
-  ],
-  "submittedAt": "2026-04-13T08:00:00.000Z"
-}
-```
-
-Success response (`201`):
-
-```json
-{
-  "message": "Attempt saved successfully",
-  "attempt": {
-    "attemptId": "f8f4f1e8-7f39-4f3e-bc13-7fb5b87f7e9f",
     "userId": "u123",
     "roomId": "room-1",
     "questionId": "42",
@@ -114,11 +88,41 @@ Success response (`201`):
     "language": "typescript",
     "code": "function twoSum(nums, target) { return [0,1]; }",
     "passed": true,
-    "results": [],
-    "error": null,
-    "submittedAt": "2026-04-13T08:00:00.000Z",
-    "_id": "..."
-  }
+    "results": [
+        {
+            "input": [2, 7, 11, 15],
+            "expected": [0, 1],
+            "actual": [0, 1],
+            "passed": true,
+            "stderr": null,
+            "compileOutput": null,
+            "message": null,
+            "status": "Accepted"
+        }
+    ],
+    "submittedAt": "2026-04-13T08:00:00.000Z"
+}
+```
+
+Success response (`201`):
+
+```json
+{
+    "message": "Attempt saved successfully",
+    "attempt": {
+        "attemptId": "f8f4f1e8-7f39-4f3e-bc13-7fb5b87f7e9f",
+        "userId": "u123",
+        "roomId": "room-1",
+        "questionId": "42",
+        "questionTitle": "Two Sum",
+        "language": "typescript",
+        "code": "function twoSum(nums, target) { return [0,1]; }",
+        "passed": true,
+        "results": [],
+        "error": null,
+        "submittedAt": "2026-04-13T08:00:00.000Z",
+        "_id": "..."
+    }
 }
 ```
 
@@ -126,7 +130,7 @@ Validation error (`400`):
 
 ```json
 {
-  "message": "userId, language, code, and passed are required"
+    "message": "userId, language, code, and passed are required"
 }
 ```
 
@@ -147,25 +151,25 @@ Success response (`200`):
 
 ```json
 {
-  "items": [
-    {
-      "_id": "...",
-      "attemptId": "073e9d6f-b6d2-4487-8170-ae349bccad24",
-      "userId": "u123",
-      "roomId": "room-1",
-      "questionId": "42",
-      "questionTitle": "Two Sum",
-      "language": "typescript",
-      "code": "function twoSum(nums, target) { return [0,1]; }",
-      "passed": true,
-      "results": [],
-      "error": null,
-      "submittedAt": "2026-04-13T08:26:49.776Z"
-    }
-  ],
-  "total": 1,
-  "limit": 50,
-  "skip": 0
+    "items": [
+        {
+            "_id": "...",
+            "attemptId": "073e9d6f-b6d2-4487-8170-ae349bccad24",
+            "userId": "u123",
+            "roomId": "room-1",
+            "questionId": "42",
+            "questionTitle": "Two Sum",
+            "language": "typescript",
+            "code": "function twoSum(nums, target) { return [0,1]; }",
+            "passed": true,
+            "results": [],
+            "error": null,
+            "submittedAt": "2026-04-13T08:26:49.776Z"
+        }
+    ],
+    "total": 1,
+    "limit": 50,
+    "skip": 0
 }
 ```
 
@@ -173,7 +177,7 @@ Validation error (`400`):
 
 ```json
 {
-  "message": "userId is required"
+    "message": "userId is required"
 }
 ```
 
