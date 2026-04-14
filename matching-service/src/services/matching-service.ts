@@ -32,6 +32,12 @@ export interface MatchingRepository {
         nowMs: number,
         matchId?: string,
     ): Promise<void>;
+    attemptMatchAtomically?(
+        entry: QueueEntry,
+        nowMs: number,
+        accessToken: string | undefined,
+        joiningUserAlreadyQueued: boolean,
+    ): Promise<MatchResult | null>;
     recordMatchHistory(match: MatchResult): Promise<void>;
     markMatchHistoryEnded(matchId: string, nowMs: number): Promise<void>;
 }
@@ -43,6 +49,7 @@ const DIFFICULTY_RANK: Record<Difficulty, number> = {
     medium: 1,
     hard: 2,
 };
+const ATOMIC_MATCH_CONFLICT_ERROR = 'ATOMIC_MATCH_CONFLICT_ERROR';
 
 class MongoMatchingRepository implements MatchingRepository {
     async clear() {
@@ -117,6 +124,101 @@ class MongoMatchingRepository implements MatchingRepository {
             matchId,
             occurredAt: new Date(nowMs),
         });
+    }
+
+    async attemptMatchAtomically(
+        entry: QueueEntry,
+        nowMs: number,
+        accessToken: string | undefined,
+        joiningUserAlreadyQueued: boolean,
+    ) {
+        const session = await QueueModel.startSession();
+
+        try {
+            const maybeMatch = await session.withTransaction(async () => {
+                const cutoff = new Date(nowMs - QUEUE_TIMEOUT_MS);
+                await QueueModel.deleteMany({ joinedAt: { $lte: cutoff } }, { session });
+
+                const queuedDocuments = await QueueModel.find({})
+                    .sort({ joinedAt: 1 })
+                    .session(session)
+                    .lean();
+                const queuedUsers = queuedDocuments.map((document) => queueDocumentToEntry(document));
+
+                const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
+                if (!waitingUser) {
+                    return null;
+                }
+
+                const criteria = resolveMatchCriteria(waitingUser, entry);
+                const question = await fetchRandomQuestionForMatch(
+                    criteria.topic,
+                    criteria.difficulty,
+                    accessToken,
+                );
+
+                if (!question) {
+                    console.warn(
+                        'Match candidate found but no valid question available, keeping user queued',
+                        {
+                            joiningUserId: entry.userId,
+                            waitingUserId: waitingUser.userId,
+                            topic: criteria.topic,
+                            difficulty: criteria.difficulty,
+                        },
+                    );
+                    return null;
+                }
+
+                if (joiningUserAlreadyQueued) {
+                    const removedUsers = await QueueModel.deleteMany(
+                        { userId: { $in: [entry.userId, waitingUser.userId] } },
+                        { session },
+                    );
+                    if (removedUsers.deletedCount !== 2) {
+                        throw new Error(ATOMIC_MATCH_CONFLICT_ERROR);
+                    }
+                } else {
+                    const removedWaitingUser = await QueueModel.deleteOne(
+                        { userId: waitingUser.userId },
+                        { session },
+                    );
+                    if (removedWaitingUser.deletedCount !== 1) {
+                        return null;
+                    }
+                }
+
+                const match: MatchResult = {
+                    matchId: randomUUID(),
+                    userIds: [waitingUser.userId, entry.userId],
+                    topic: criteria.topic,
+                    difficulty: criteria.difficulty,
+                    question,
+                    createdAt: new Date(nowMs).toISOString(),
+                };
+
+                await MatchModel.create(
+                    [
+                        {
+                            ...match,
+                            createdAt: new Date(match.createdAt),
+                        },
+                    ],
+                    { session },
+                );
+
+                return match;
+            });
+
+            return maybeMatch ?? null;
+        } catch (error) {
+            if (isAtomicMatchConflictError(error)) {
+                return null;
+            }
+            throw error;
+        } finally {
+            await session.endSession();
+        }
     }
 
     async recordMatchHistory(match: MatchResult) {
@@ -387,6 +489,27 @@ function findBestWaitingCandidate(queue: QueueEntry[], joiningUser: QueueEntry, 
     return queue[selectedIndex];
 }
 
+function isMongoDuplicateKeyError(error: unknown) {
+    if (typeof error !== 'object' || error === null) {
+        return false;
+    }
+
+    if (!('code' in error)) {
+        return false;
+    }
+
+    const maybeCode = (error as { code?: unknown }).code;
+    return maybeCode === 11000;
+}
+
+function isAtomicMatchConflictError(error: unknown) {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+
+    return error.message === ATOMIC_MATCH_CONFLICT_ERROR;
+}
+
 async function safeRecordQueueEvent(
     entry: QueueEntry,
     eventType: 'queued' | 'matched' | 'left' | 'timed_out',
@@ -454,6 +577,15 @@ async function attemptMatchForEntry(
     accessToken: string | undefined,
     joiningUserAlreadyQueued: boolean,
 ) {
+    if (repository.attemptMatchAtomically) {
+        return repository.attemptMatchAtomically(
+            entry,
+            nowMs,
+            accessToken,
+            joiningUserAlreadyQueued,
+        );
+    }
+
     const queuedUsers = await repository.listQueuedUsers(nowMs);
     const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
     if (!waitingUser) {
@@ -540,7 +672,27 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
         return { state: 'matched' as const, match };
     }
 
-    await repository.enqueue(entry);
+    try {
+        await repository.enqueue(entry);
+    } catch (error) {
+        if (!isMongoDuplicateKeyError(error)) {
+            throw error;
+        }
+
+        const concurrentMatch = await repository.getMatchByUserId(request.userId);
+        if (concurrentMatch) {
+            const hydratedMatch = await ensureMatchHasQuestion(concurrentMatch, accessToken);
+            return { state: 'matched' as const, match: hydratedMatch };
+        }
+
+        const existingEntryAfterDuplicate = await repository.getQueuedUserEntry(request.userId);
+        if (existingEntryAfterDuplicate) {
+            return { state: 'queued' as const, entry: existingEntryAfterDuplicate };
+        }
+
+        throw error;
+    }
+
     await safeRecordQueueEvent(entry, 'queued', nowMs);
 
     return { state: 'queued' as const, entry };

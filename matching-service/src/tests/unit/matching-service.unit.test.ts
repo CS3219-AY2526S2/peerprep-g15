@@ -12,6 +12,7 @@ import {
 } from '../../services/matching-service';
 import { setQuestionServiceFetch } from '../../services/question-service';
 import type { MatchResult, QueueEntry } from '../../models/matching-model';
+import type { MatchingRepository } from '../../services/matching-service';
 
 const questions = [
     {
@@ -403,6 +404,73 @@ test('edge case fixed: duplicate join from the same user is idempotent', async (
     const queue = await listQueuedUsers();
     const dupEntries = queue.filter((entry) => entry.userId === 'user-dup');
     assert.equal(dupEntries.length, 1);
+});
+
+test('duplicate enqueue conflict is treated as idempotent queued response', async () => {
+    const existingEntry: QueueEntry = {
+        userId: 'user-race-enqueue',
+        topic: 'graphs',
+        difficulty: 'easy',
+        joinedAt: new Date('2026-04-04T10:00:00.000Z').toISOString(),
+    };
+
+    const duplicateKeyError = Object.assign(new Error('E11000 duplicate key error'), {
+        code: 11000,
+    });
+
+    const repository: MatchingRepository = {
+        async clear() {
+            // No-op for this focused behavior test.
+        },
+        async purgeTimedOut() {
+            // No-op for this focused behavior test.
+        },
+        async getMatchByUserId() {
+            return null;
+        },
+        async getQueuedUserEntry(userId: string) {
+            return userId === existingEntry.userId ? existingEntry : null;
+        },
+        async listQueuedUsers() {
+            return [];
+        },
+        async enqueue() {
+            throw duplicateKeyError;
+        },
+        async removeQueuedUser() {
+            return null;
+        },
+        async saveMatch() {
+            // No-op for this focused behavior test.
+        },
+        async endMatch() {
+            return false;
+        },
+        async recordQueueEvent() {
+            // No-op for this focused behavior test.
+        },
+        async recordMatchHistory() {
+            // No-op for this focused behavior test.
+        },
+        async markMatchHistoryEnded() {
+            // No-op for this focused behavior test.
+        },
+    };
+
+    setMatchingRepository(repository);
+
+    const result = await joinQueue(
+        {
+            userId: 'user-race-enqueue',
+            topic: 'graphs',
+            difficulty: 'easy',
+        },
+        Date.now(),
+        'access-user-race-enqueue',
+    );
+
+    assert.equal(result.state, 'queued');
+    assert.equal(result.entry?.userId, 'user-race-enqueue');
 });
 
 test('edge case fixed: repeated join does not self-match and later matches with another user', async () => {
