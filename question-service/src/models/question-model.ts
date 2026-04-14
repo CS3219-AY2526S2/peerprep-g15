@@ -1,4 +1,93 @@
+import crypto from 'crypto';
 import mongoose, { Schema } from 'mongoose';
+
+function normalizeText(value: string): string {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^\p{L}\p{N}\s]/gu, '');
+}
+
+function toPlainValue(value: unknown): unknown {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(toPlainValue);
+    }
+
+    if (value instanceof Map) {
+        return Object.fromEntries(
+            [...value.entries()]
+                .sort(([a], [b]) => String(a).localeCompare(String(b)))
+                .map(([k, v]) => [k, toPlainValue(v)]),
+        );
+    }
+
+    if (typeof value === 'object') {
+        if (typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+            return toPlainValue((value as { toObject: () => unknown }).toObject());
+        }
+
+        const obj = value as Record<string, unknown>;
+        const sortedKeys = Object.keys(obj).sort();
+        const result: Record<string, unknown> = {};
+
+        for (const key of sortedKeys) {
+            result[key] = toPlainValue(obj[key]);
+        }
+
+        return result;
+    }
+
+    return value;
+}
+
+function stableStringify(value: unknown): string {
+    if (value === null || value === undefined) {
+        return 'null';
+    }
+
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(',')}]`;
+    }
+
+    if (value instanceof Map) {
+        return stableStringify(Object.fromEntries([...value.entries()].sort(([a], [b]) => a.localeCompare(b))));
+    }
+
+    if (typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        const sortedKeys = Object.keys(obj).sort();
+        return `{${sortedKeys.map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`).join(',')}}`;
+    }
+
+    return JSON.stringify(value);
+}
+
+function buildQuestionFingerprint(doc: {
+    title?: string;
+    description?: string;
+    questionType?: string;
+    functionSignature?: unknown;
+    designSignature?: unknown;
+    sqlTables?: unknown;
+    executionSpec?: unknown;
+}): string {
+    const payload = {
+        title: normalizeText(doc.title ?? ''),
+        description: normalizeText(doc.description ?? ''),
+        questionType: doc.questionType ?? '',
+        functionSignature: toPlainValue(doc.functionSignature),
+        designSignature: toPlainValue(doc.designSignature),
+        sqlTables: toPlainValue(doc.sqlTables) ?? [],
+        executionSpec: toPlainValue(doc.executionSpec),
+    };
+
+    return crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+}
 
 const exampleSchema = new Schema(
     {
@@ -103,8 +192,14 @@ const executionSpecSchema = new Schema(
 const questionSchema = new Schema(
     {
         questionId: { type: Number, required: true, unique: true },
+
         title: { type: String, required: true, trim: true },
+        normalizedTitle: { type: String, required: true, trim: true },
+
         description: { type: String, required: true, trim: true },
+
+        contentFingerprint: { type: String, required: true },
+
         categories: { type: [String], required: true, default: [] },
         difficulty: {
             type: String,
@@ -131,13 +226,31 @@ const questionSchema = new Schema(
         functionSignature: { type: functionSignatureSchema, default: null },
         designSignature: { type: designSignatureSchema, default: null },
         sqlTables: { type: [sqlTableSchema], default: [] },
-
         executionSpec: { type: executionSpecSchema, required: true },
-
         timeLimitMs: { type: Number, default: 2000, min: 100 },
         memoryLimitMb: { type: Number, default: 256, min: 16 },
     },
-    { timestamps: true },
+    {
+        timestamps: true,
+        optimisticConcurrency: true,
+    },
 );
+
+questionSchema.pre('validate', function (next) {
+    this.normalizedTitle = normalizeText(this.title ?? '');
+    this.contentFingerprint = buildQuestionFingerprint({
+        title: this.title,
+        description: this.description,
+        questionType: this.questionType,
+        functionSignature: this.functionSignature,
+        designSignature: this.designSignature,
+        sqlTables: this.sqlTables,
+        executionSpec: this.executionSpec,
+    });
+    next();
+});
+
+questionSchema.index({ normalizedTitle: 1 });
+questionSchema.index({ contentFingerprint: 1 }, { unique: true });
 
 export const Question = mongoose.model('Question', questionSchema);

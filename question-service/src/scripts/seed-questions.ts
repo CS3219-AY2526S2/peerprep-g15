@@ -9,7 +9,10 @@ async function main() {
     await connectDB(config.mongo.uri, config.mongo.dbName);
 
     await Question.deleteMany({});
-    await Question.insertMany(sampleQuestions, { ordered: true });
+    
+    for (const question of sampleQuestions) {
+        await Question.create(question);
+    }
 
     console.log(`Inserted ${sampleQuestions.length} questions`);
     await mongoose.disconnect();
