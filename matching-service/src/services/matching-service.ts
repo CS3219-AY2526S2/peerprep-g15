@@ -260,7 +260,11 @@ class MongoMatchingRepository implements MatchingRepository {
                     throw new Error('Failed to create match: no valid question available');
                 }
 
-                await createCollabSession(match.matchId, match.userIds, String(match.question.questionId));
+                await createCollabSession(
+                    match.matchId,
+                    match.userIds,
+                    String(match.question.questionId),
+                );
 
                 return match;
             });
