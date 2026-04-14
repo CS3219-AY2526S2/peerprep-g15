@@ -66,6 +66,7 @@ export function initSocket(server: http.Server) {
 
         try {
             const user = await resolveAuthUser(token);
+            console.log('Authenticated user:', user.username);
             socket.data.userId = user.id;
             socket.data.username = user.username;
             next();
@@ -79,14 +80,18 @@ export function initSocket(server: http.Server) {
 
         socket.on('join-room', async (roomId: string) => {
             const { userId, username } = socket.data;
+            console.log('[join-room]', { roomId, userId, username });
             const session = await getSession(roomId);
+            console.log('[join-room] session found:', !!session, session?.userIds);
 
             if (!session || !session.userIds.includes(userId)) {
+                console.log('[join-room] REJECTED - session not found or user not in session');
                 socket.emit('join-error', { message: 'Invalid session or user' });
                 return;
             }
 
             socket.join(roomId);
+            console.log(`User ${username} joined room ${roomId}`);
             socket.data.roomId = roomId;
             socket.data.userId = userId;
             socket.data.username = username;

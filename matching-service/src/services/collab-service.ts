@@ -8,6 +8,7 @@ export function setCollabServiceFetch(nextFetch?: typeof fetch) {
 
 export async function createCollabSession(roomId: string, userIds: string[], questionId: string) {
     try {
+        console.log('Creating collab session with:', { roomId, userIds, questionId });
         const res = await collabFetch(`${config.collaborationService.baseUrl}/internal/sessions`, {
             method: 'POST',
             headers: {
