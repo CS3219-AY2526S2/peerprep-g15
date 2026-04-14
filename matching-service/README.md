@@ -281,7 +281,6 @@ The queue uses staged matching:
 
 - Stage 0: exact topic and difficulty match.
 - Stage 1: topic match after the waiting user has been in queue for at least 15 seconds.
-- Stage 2: FIFO fallback after the waiting user has been in queue for at least 30 seconds.
 - Timeout: users are removed from consideration after 60 seconds.
 
 If multiple candidates qualify, the service prefers the lowest stage first and then the longest-waiting user.
