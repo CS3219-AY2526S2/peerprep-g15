@@ -190,7 +190,9 @@ class MongoMatchingRepository implements MatchingRepository {
                     .sort({ joinedAt: 1 })
                     .session(session)
                     .lean();
-                const queuedUsers = queuedDocuments.map((document) => queueDocumentToEntry(document));
+                const queuedUsers = queuedDocuments.map((document) =>
+                    queueDocumentToEntry(document),
+                );
 
                 const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
                 if (!waitingUser) {
