@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import mongoose, { Schema } from 'mongoose';
+import { inferExecutionSpec, type SeedQuestion } from '../types/execution';
 
 function normalizeText(value: string): string {
     return value
@@ -239,16 +240,42 @@ const questionSchema = new Schema(
 );
 
 questionSchema.pre('validate', function (next) {
-    this.normalizedTitle = normalizeText(this.title ?? '');
-    this.contentFingerprint = buildQuestionFingerprint({
-        title: this.title,
-        description: this.description,
-        questionType: this.questionType,
-        functionSignature: this.functionSignature,
-        designSignature: this.designSignature,
-        sqlTables: this.sqlTables,
-        executionSpec: this.executionSpec,
+    const doc = this as any;
+
+    doc.executionSpec = inferExecutionSpec({
+        questionId: doc.questionId,
+        title: doc.title,
+        description: doc.description,
+        categories: doc.categories ?? [],
+        difficulty: doc.difficulty,
+        questionType: doc.questionType,
+        imageUrl: doc.imageUrl ?? '',
+        sourceUrl: doc.sourceUrl ?? '',
+        constraints: doc.constraints ?? [],
+        hints: doc.hints ?? [],
+        examples: doc.examples ?? [],
+        testCases: doc.testCases ?? [],
+        supportedLanguages: doc.supportedLanguages ?? [],
+        starterCode: doc.starterCode ?? new Map(),
+        functionSignature: doc.functionSignature,
+        designSignature: doc.designSignature,
+        sqlTables: doc.sqlTables ?? [],
+        timeLimitMs: doc.timeLimitMs,
+        memoryLimitMb: doc.memoryLimitMb,
     });
+
+    doc.normalizedTitle = normalizeText(doc.title ?? '');
+
+    doc.contentFingerprint = buildQuestionFingerprint({
+        title: doc.title,
+        description: doc.description,
+        questionType: doc.questionType,
+        functionSignature: doc.functionSignature,
+        designSignature: doc.designSignature,
+        sqlTables: doc.sqlTables,
+        executionSpec: doc.executionSpec,
+    });
+
     next();
 });
 

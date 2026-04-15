@@ -32,9 +32,9 @@ test.describe('Authentication flows', () => {
 
         await expect(page).toHaveURL('/');
         await expect(page.getByLabel('Email address')).toBeVisible();
-        await expect.poll(() => page.evaluate(() => localStorage.getItem('accessToken'))).toBe(
-            'registered-token',
-        );
+        await expect
+            .poll(() => page.evaluate(() => localStorage.getItem('accessToken')))
+            .toBe('registered-token');
     });
 
     test('logs in a normal user and opens the user home page', async ({ page }) => {
@@ -125,8 +125,8 @@ test.describe('Authentication flows', () => {
 
         await expect(page).toHaveURL('/admin/home');
         await expect(page.getByText('Admin Dashboard')).toBeVisible();
-        await expect.poll(() => page.evaluate(() => localStorage.getItem('name'))).toBe(
-            'Admin Annie',
-        );
+        await expect
+            .poll(() => page.evaluate(() => localStorage.getItem('name')))
+            .toBe('Admin Annie');
     });
 });
