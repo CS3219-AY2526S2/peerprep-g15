@@ -76,6 +76,31 @@ const Collab = () => {
     const userId = params.get('userId') || localStorage.getItem('userId') || 'user1';
     const name = params.get('name') || localStorage.getItem('name') || 'User';
 
+    const rawForcedStatus = params.get('testStatus');
+    const forcedStatus =
+        rawForcedStatus === 'pending' ||
+        rawForcedStatus === 'mismatch' ||
+        rawForcedStatus === 'timeout' ||
+        rawForcedStatus === 'ended' ||
+        rawForcedStatus === 'active'
+            ? rawForcedStatus
+            : null;
+
+    const forcedPartnerJoined = params.get('testPartnerJoined') === '1';
+    const forcedPartnerLockedIn = params.get('testPartnerLockedIn') === '1';
+    const forcedLockedIn = params.get('testLockedIn') === '1';
+    const forcedLanguage = params.get('testLanguage') || '';
+    const forcedPartnerName = params.get('testPartnerName') || 'Partner';
+    const forcedPartnerDisconnected = params.get('testPartnerDisconnected') === '1';
+
+    const isSeamMode =
+        !!forcedStatus ||
+        forcedPartnerJoined ||
+        forcedPartnerLockedIn ||
+        forcedLockedIn ||
+        !!forcedLanguage ||
+        forcedPartnerDisconnected;
+
     // TODO: these should come from matching service / route params
     const { roomId } = useParams();
 
@@ -86,21 +111,22 @@ const Collab = () => {
 
     const [socket, setSocket] = useState<Socket | null>(null);
     const [_session, setSession] = useState<SessionState | null>(null);
+
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatInput, setChatInput] = useState('');
-    const [selectedLanguage, setSelectedLanguage] = useState('');
-    const [lockedIn, setLockedIn] = useState(false);
-    const [partnerLockedIn, setPartnerLockedIn] = useState(false);
+    const [selectedLanguage, setSelectedLanguage] = useState(forcedLanguage);
+    const [lockedIn, setLockedIn] = useState(forcedLockedIn);
+    const [partnerLockedIn, setPartnerLockedIn] = useState(forcedPartnerLockedIn);
     const [timer, setTimer] = useState(30);
-    const [sessionStatus, setSessionStatus] = useState('pending');
+    const [sessionStatus, setSessionStatus] = useState(forcedStatus || 'pending');
     const [codeResult, setCodeResult] = useState<any>(null);
     const [isExecuting, setIsExecuting] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const [partnerJoined, setPartnerJoined] = useState(false);
-    const [partnerDisconnected, setPartnerDisconnected] = useState(false);
+    const [partnerJoined, setPartnerJoined] = useState(forcedPartnerJoined);
+    const [partnerDisconnected, setPartnerDisconnected] = useState(forcedPartnerDisconnected);
     const [disconnectTimer, setDisconnectTimer] = useState(30);
-    const [partnerName, setPartnerName] = useState('Partner');
+    const [partnerName, setPartnerName] = useState(forcedPartnerName);
     const [submitResult, setSubmitResult] = useState<any>(null);
     const [submitTimer, setSubmitTimer] = useState(10);
     const [question, setQuestion] = useState<Question | null>(null);
@@ -114,6 +140,8 @@ const Collab = () => {
 
     // Connect socket
     useEffect(() => {
+        if (isSeamMode) return;
+
         const s = io(COLLAB_URL, {
             transports: ['websocket'],
             auth: {
@@ -143,7 +171,7 @@ const Collab = () => {
         });
 
         const handleYjsUpdate = (update: Uint8Array, origin: any) => {
-            if (origin === 'remote') return; // don't re-broadcast updates that came from the server
+            if (origin === 'remote') return;
             s.emit('yjs-update', roomId, update);
         };
 
@@ -200,25 +228,21 @@ const Collab = () => {
         });
 
         s.on('code-executing', () => {
-            console.log('code-executing received');
             setIsExecuting(true);
             setCodeResult(null);
         });
 
         s.on('code-result', (result: any) => {
-            console.log('code-result received:', result);
             setIsExecuting(false);
             setCodeResult(result);
         });
 
         s.on('submit-result', (result: any) => {
-            console.log('submit-result received:', result);
             setIsExecuting(false);
             setSubmitResult(result);
         });
 
         s.on('code-error', (err: any) => {
-            console.log('code-error received:', err);
             setIsExecuting(false);
             setCodeResult({ error: err.message });
         });
@@ -248,7 +272,7 @@ const Collab = () => {
         });
 
         return () => {
-            ydoc.current.off('update', handleYjsUpdate); // clean up yjs listener
+            ydoc.current.off('update', handleYjsUpdate);
             bindingRef.current?.destroy();
             s.disconnect();
         };
@@ -397,17 +421,20 @@ const Collab = () => {
 
     const handleSendMessage = () => {
         if (!chatInput.trim() || !socket) return;
-        const msg = {
+
+        const trimmed = chatInput.trim();
+
+        socket.emit('send-message', {
             roomId,
-            content: chatInput.trim(),
-        };
-        socket.emit('send-message', msg);
+            content: trimmed,
+        });
+
         setMessages((prev) => [
             ...prev,
             {
                 senderId: userId,
                 username: name,
-                content: chatInput.trim(),
+                content: trimmed,
                 timestamp: new Date().toISOString(),
             },
         ]);
