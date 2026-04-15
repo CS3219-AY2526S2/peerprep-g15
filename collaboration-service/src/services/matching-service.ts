@@ -3,7 +3,7 @@ import { config } from '../config/env';
 
 export async function endMatchInMatchingService(matchId: string) {
     try {
-        await fetch(`${config.matchingService.baseUrl}/internal/matching/end`, {
+        await fetch(`${config.matchingService.baseUrl}/internal/sessions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
