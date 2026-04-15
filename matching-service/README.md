@@ -1,13 +1,13 @@
 # Matching Service
 
-The matching service owns the MongoDB-backed queue used to pair users by topic and difficulty. It verifies the caller through `user-service` before allowing queue operations.
+The matching service owns the Redis-backed queue used to pair users by topic and difficulty. It verifies the caller through `user-service` before allowing queue operations.
 
 ## What it does
 
 - Accepts authenticated join and leave requests.
 - Accepts authenticated heartbeat requests to keep active queued users alive.
-- Tracks queue status for each user in MongoDB.
-- Produces a match when a compatible waiting user is found and stores it in MongoDB.
+- Tracks queue status for each user in Redis.
+- Produces a match when a compatible waiting user is found and stores it in Redis.
 - Retrieves a random question for each new match using the resolved match topic and difficulty.
 - Exposes a queue snapshot for debugging and admin-style inspection.
 - Resolves access tokens through `user-service` instead of verifying JWTs locally.
@@ -17,8 +17,7 @@ The matching service owns the MongoDB-backed queue used to pair users by topic a
 The service reads these variables from the environment:
 
 - `PORT` - HTTP port, defaults to `3003`.
-- `MONGO_URI` - MongoDB connection string.
-- `MONGO_DB_NAME` - MongoDB database name.
+- `REDIS_URL` - Redis connection string, defaults to `redis://localhost:6379`.
 - `USER_SERVICE_URL` - Base URL for `user-service`, defaults to `http://localhost:3001`.
 - `QUESTION_SERVICE_URL` - Base URL for `question-service`, defaults to `http://localhost:3002`.
 - `INTERNAL_SERVICE_TOKEN` - Shared token used to call `user-service` internal auth endpoints.
@@ -260,12 +259,14 @@ Routes except health are protected by `requireAuth`. The request `userId` must m
 
 - `createApp()` in `src/app.ts` creates the Express app, enables CORS and JSON parsing, registers routes, and installs the 404 and error handlers.
 - `registerRoutes(app)` in `src/routes/index.ts` mounts the matching router under `/matching`.
-- `start()` in `src/server.ts` connects to MongoDB, creates the app, and starts the HTTP server.
-- `connectDB(uri, dbName)` in `src/config/db.ts` connects to MongoDB and throws if either value is missing.
+- `start()` in `src/server.ts` connects to Redis, creates the app, and starts the HTTP server.
+- `connectRedis(url)` in `src/config/redis.ts` connects to Redis and stores the active client for later access.
+- `getRedis()` in `src/config/redis.ts` returns the active Redis client used by the repository.
+- `disconnectRedis()` in `src/config/redis.ts` closes the active Redis client when the process shuts down.
 
 ### Environment and Configuration
 
-- `config` in `src/config/env.ts` reads runtime settings such as `PORT`, `MONGO_URI`, `USER_SERVICE_URL`, and `INTERNAL_SERVICE_TOKEN`.
+- `config` in `src/config/env.ts` reads runtime settings such as `PORT`, `REDIS_URL`, `USER_SERVICE_URL`, and `INTERNAL_SERVICE_TOKEN`.
 
 ### Controllers
 
@@ -332,7 +333,7 @@ If multiple candidates qualify, the service prefers the lowest stage first and t
 
 ## Testing Notes
 
-The production matching queue persists in MongoDB. Tests can still swap in an isolated in-memory repository with `setMatchingRepository(createInMemoryMatchingRepository())` when they need a clean slate without touching the live database.
+The production matching queue persists in Redis. Tests can still swap in an isolated in-memory repository with `setMatchingRepository(createInMemoryMatchingRepository())` when they need a clean slate without touching Redis.
 
 ## Notes
 
