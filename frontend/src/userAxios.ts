@@ -1,5 +1,5 @@
 import axios from 'axios';
-import authAxios from './authAxios';
+import { refreshAccessToken } from './refreshToken';
 
 const userAxios = axios.create({
     baseURL: 'http://localhost:3001',
@@ -25,10 +25,7 @@ userAxios.interceptors.response.use(
             originalRequest._retry = true;
 
             try {
-                const refreshResponse = await authAxios.post('/auth/refresh');
-                const newAccessToken = refreshResponse.data.accessToken;
-
-                localStorage.setItem('accessToken', newAccessToken);
+                const newAccessToken = await refreshAccessToken();
 
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
 

@@ -10,6 +10,7 @@ import { createHighlighter } from 'shiki';
 import { shikiToMonaco } from '@shikijs/monaco';
 import { loader } from '@monaco-editor/react';
 import type { ExecutionSpec, TestCase } from '../types/execution';
+import { refreshAccessToken } from '../refreshToken';
 
 const COLLAB_URL = 'http://localhost:3004';
 
@@ -124,6 +125,20 @@ const Collab = () => {
 
         s.on('connect', () => {
             s.emit('join-room', roomId);
+        });
+
+        s.on('connect_error', async (err) => {
+            if (err.message === 'token_expired' || err.message === 'unauthorized') {
+                try {
+                    const newToken = await refreshAccessToken();
+                    s.auth = { token: newToken };
+                    s.connect();
+                } catch {
+                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem('name');
+                    window.location.href = '/';
+                }
+            }
         });
 
         s.on('session-state', (data: { session: SessionState; question: Question }) => {
