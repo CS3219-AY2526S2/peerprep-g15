@@ -8,6 +8,7 @@ import {
     handleDisconnect,
     submitCode,
     saveAttempt,
+    saveAttemptForAllUsersInHistory,
     addMessageToSession,
     persistYjsState,
 } from './services/collaboration-service';
@@ -302,6 +303,13 @@ export function initSocket(server: http.Server) {
                     );
 
                     await saveAttempt(roomId, code, language, result.passed, result.results);
+                    await saveAttemptForAllUsersInHistory(
+                        roomId,
+                        code,
+                        language,
+                        result.passed,
+                        result.results,
+                    );
 
                     io.to(roomId).emit('submit-result', result);
                 } catch (err: any) {

@@ -17,4 +17,8 @@ export const config = {
         baseUrl: process.env.MATCHING_SERVICE_URL ?? 'http://localhost:3003',
         internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     },
+    historyService: {
+        baseUrl: process.env.HISTORY_SERVICE_URL ?? 'http://localhost:3005',
+        internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+    },
 };

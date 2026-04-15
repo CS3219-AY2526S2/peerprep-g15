@@ -1,5 +1,6 @@
 import { Session } from '../models/collaboration-model';
 import { LANGUAGE_MAP } from '../config/constants';
+import { config } from '../config/env';
 // @ts-ignore
 import axios from 'axios';
 import {
@@ -145,6 +146,58 @@ export async function saveAttempt(
         },
         { new: true },
     );
+}
+
+export async function saveAttemptForAllUsersInHistory(
+    roomId: string,
+    code: string,
+    language: string,
+    passed: boolean,
+    results: any,
+) {
+    const session = await getSession(roomId);
+    if (!session) {
+        return;
+    }
+
+    const requestBody = {
+        roomId,
+        questionId: session.questionId,
+        language,
+        code,
+        passed,
+        results,
+        submittedAt: new Date().toISOString(),
+    };
+
+    const requests = session.userIds.map(async (userId) => {
+        const response = await fetch(`${config.historyService.baseUrl}/save-attempt`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-internal-service-token': config.historyService.internalServiceToken,
+            },
+            body: JSON.stringify({
+                userId,
+                ...requestBody,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`History service returned status ${response.status}`);
+        }
+    });
+
+    const outcomes = await Promise.allSettled(requests);
+    const failed = outcomes.filter(
+        (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected',
+    );
+
+    if (failed.length > 0) {
+        console.error(
+            `Failed to save ${failed.length} attempt(s) to history service for room ${roomId}`,
+        );
+    }
 }
 
 async function runSingleTestCase(
