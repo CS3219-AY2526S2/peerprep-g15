@@ -5,6 +5,7 @@ on:
         branches: [main, master]
     pull_request:
         branches: [main, master]
+
 jobs:
     test:
         timeout-minutes: 60
@@ -26,6 +27,12 @@ jobs:
 
             - name: Install frontend dependencies
               run: npm --prefix frontend ci
+
+            - name: Cache Playwright browsers
+              uses: actions/cache@v4
+              with:
+                  path: /home/runner/.cache/ms-playwright
+                  key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
             - name: Install Playwright browsers
               run: npx playwright install --with-deps
