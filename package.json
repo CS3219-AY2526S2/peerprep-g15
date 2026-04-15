@@ -1,39 +1,39 @@
 {
-  "name": "peerprep-g15",
-  "version": "1.0.0",
-  "description": "[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/HpD0QZBI)\r # CS3219 Project (PeerPrep) - AY2526S2\r ## Group: Gxx",
-  "main": "index.js",
-  "scripts": {
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/CS3219-AY2526S2/peerprep-g15.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/CS3219-AY2526S2/peerprep-g15/issues"
-  },
-  "homepage": "https://github.com/CS3219-AY2526S2/peerprep-g15#readme",
-  "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@tailwindcss/vite": "^4.2.2",
-    "@types/axios": "^0.9.36",
-    "@types/node": "^25.6.0",
-    "prettier": "^3.8.1",
-    "typescript": "^6.0.2"
-  },
-  "dependencies": {
-    "@types/react-router-dom": "^5.3.3",
-    "axios": "^1.14.0",
-    "bootstrap": "^5.3.8",
-    "cors": "^2.8.6",
-    "react-bootstrap-icons": "^1.11.6",
-    "react-router-dom": "^7.13.1",
-    "tailwindcss": "^4.2.2"
-  }
+    "name": "peerprep-g15",
+    "version": "1.0.0",
+    "description": "[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/HpD0QZBI)\r # CS3219 Project (PeerPrep) - AY2526S2\r ## Group: Gxx",
+    "main": "index.js",
+    "scripts": {
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/CS3219-AY2526S2/peerprep-g15.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "bugs": {
+        "url": "https://github.com/CS3219-AY2526S2/peerprep-g15/issues"
+    },
+    "homepage": "https://github.com/CS3219-AY2526S2/peerprep-g15#readme",
+    "devDependencies": {
+        "@playwright/test": "^1.59.1",
+        "@tailwindcss/vite": "^4.2.2",
+        "@types/axios": "^0.9.36",
+        "@types/node": "^25.6.0",
+        "prettier": "^3.8.1",
+        "typescript": "^6.0.2"
+    },
+    "dependencies": {
+        "@types/react-router-dom": "^5.3.3",
+        "axios": "^1.14.0",
+        "bootstrap": "^5.3.8",
+        "cors": "^2.8.6",
+        "react-bootstrap-icons": "^1.11.6",
+        "react-router-dom": "^7.13.1",
+        "tailwindcss": "^4.2.2"
+    }
 }
