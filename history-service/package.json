@@ -1,0 +1,38 @@
+{
+    "name": "history-service",
+    "version": "1.0.0",
+    "description": "",
+    "license": "ISC",
+    "author": "",
+    "type": "commonjs",
+    "main": "index.js",
+    "scripts": {
+        "dev": "tsx watch src/server.ts",
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/server.js",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:unit": "vitest run --dir src/tests/unit",
+        "test:integration": "vitest run --dir src/tests/integration",
+        "test:manual": "tsx src/tests/manual/test-e2e.ts"
+    },
+    "dependencies": {
+        "cors": "^2.8.6",
+        "dotenv": "^17.4.1",
+        "express": "^5.2.1",
+        "mongoose": "^9.4.1"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.19",
+        "@types/express": "^5.0.6",
+        "@types/node": "^25.6.0",
+        "@types/supertest": "^7.2.0",
+        "@vitest/coverage-v8": "^4.1.0",
+        "mongodb-memory-server": "^10.3.0",
+        "nodemon": "^3.1.14",
+        "supertest": "^7.2.2",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3",
+        "vitest": "^4.1.0"
+    }
+}

@@ -1,0 +1,156 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+jobs:
+    formatting:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: package-lock.json
+
+            - run: npm ci
+            - run: npm run format:check
+
+    user-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: user-service
+
+        env:
+            MONGO_URI: ${{ secrets.MONGO_URI }}
+            MONGO_DB_NAME: peerprep_test_${{ github.run_id }}_${{ github.run_attempt }}
+            JWT_SECRET: ${{ secrets.JWT_SECRET }}
+            JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+            JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+            JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
+            BCRYPT_SALT_ROUNDS: ${{ secrets.BCRYPT_SALT_ROUNDS }}
+            INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: user-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+            - name: Cleanup test database
+              if: always()
+              run: |
+                  node - <<'NODE'
+                  const { MongoClient } = require('mongodb');
+
+                  async function main() {
+                    const uri = process.env.MONGO_URI;
+                    const dbName = process.env.MONGO_DB_NAME;
+
+                    if (!uri || !dbName) {
+                      throw new Error('MONGO_URI or MONGO_DB_NAME is missing');
+                    }
+
+                    const client = new MongoClient(uri);
+
+                    try {
+                      await client.connect();
+                      await client.db(dbName).dropDatabase();
+                      console.log(`Dropped database: ${dbName}`);
+                    } finally {
+                      await client.close();
+                    }
+                  }
+
+                  main().catch((err) => {
+                    console.error(err);
+                    process.exit(1);
+                  });
+                  NODE
+
+    question-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: question-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: question-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    collaboration-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: collaboration-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: collaboration-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    matching-service:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: matching-service
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: matching-service/package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+
+    frontend:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: frontend
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - run: npm ci
+            - run: npm run build

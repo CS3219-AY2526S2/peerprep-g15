@@ -1,0 +1,31 @@
+export const config = {
+    get nodeEnv() {
+        return process.env.NODE_ENV ?? 'development';
+    },
+    get port() {
+        return Number(process.env.PORT) || 3003;
+    },
+    userService: {
+        get baseUrl() {
+            return process.env.USER_SERVICE_URL ?? 'http://localhost:3001';
+        },
+    },
+    questionService: {
+        baseUrl: process.env.QUESTION_SERVICE_URL ?? 'http://localhost:3002',
+        internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+    },
+    collaborationService: {
+        baseUrl: process.env.COLLABORATION_SERVICE_URL ?? 'http://localhost:3004',
+        internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+    },
+    internal: {
+        get serviceToken() {
+            return process.env.INTERNAL_SERVICE_TOKEN ?? '';
+        },
+    },
+    redis: {
+        get url() {
+            return process.env.REDIS_URL ?? 'redis://localhost:6379';
+        },
+    },
+};
